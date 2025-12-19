@@ -14,15 +14,14 @@ const LOGICAL_MONITORS_INDEX = 2;
 const PROPERTIES_INDEX = 3;
 const PHYSICAL_DISPLAYS_INDEX = 4;
 
-export default class MyVisionPreferences extends ExtensionPreferences
-{
+export default class MyVisionPreferences extends ExtensionPreferences {
     /**
      * Gtk.Builder object associated with the extension
      * 
      * @type {?Gtk.Builder}
      */
     #builder = null;
-    
+
     /**
      * List of saved display configurations
      *
@@ -34,7 +33,7 @@ export default class MyVisionPreferences extends ExtensionPreferences
      * Root widget of the preferences window
      *
      * @type {?Gtk.Root}
-     */ 
+     */
     #root = null;
 
     /**
@@ -61,7 +60,7 @@ export default class MyVisionPreferences extends ExtensionPreferences
         this.#builder.add_from_resource(
             `/org/gnome/Shell/Extensions/my-vision/ui/preferences_pages.ui`
         );
-        
+
         // Add the Config Page
         const configPage = this.#builder.get_object('configPage');
         window.add(configPage);
@@ -74,7 +73,7 @@ export default class MyVisionPreferences extends ExtensionPreferences
         const shortcutListBox = this.#builder.get_object('shortcutListBox');
         const shortcutRowNext = PrefsWidgets.createShortcutRow(
             _('Switch to next available display configuration'),
-            'display-configuration-switcher-shortcut-next', 
+            'display-configuration-switcher-shortcut-next',
             this.getSettings()
         );
         shortcutListBox.append(shortcutRowNext);
@@ -106,7 +105,7 @@ export default class MyVisionPreferences extends ExtensionPreferences
 
         // Drag and Drop: Drop Handling
         const dropTarget = Gtk.DropTarget.new(GObject.TYPE_INT, Gdk.DragAction.MOVE);
-        const configListBox =  this.#builder.get_object('configListbox');
+        const configListBox = this.#builder.get_object('configListbox');
         configListBox.add_controller(dropTarget);
 
         dropTarget.connect("drop", (_drop, value, _x, y) => {
@@ -212,8 +211,8 @@ export default class MyVisionPreferences extends ExtensionPreferences
     }
 
     #updateConfigGroup() {
-        const configListBox =  this.#builder.get_object('configListbox');
-        for (let row; (row = configListBox.get_last_child()) !== null; ) {
+        const configListBox = this.#builder.get_object('configListbox');
+        for (let row; (row = configListBox.get_last_child()) !== null;) {
             configListBox.remove(row);
         }
 
@@ -253,7 +252,7 @@ export default class MyVisionPreferences extends ExtensionPreferences
     }
 
     #onEditApply(index) {
-        const configListBox =  this.#builder.get_object('configListbox');
+        const configListBox = this.#builder.get_object('configListbox');
         this.#configs[index][NAME_INDEX] = configListBox.get_row_at_index(index).get_text();
         this.#saveConfigs();
     }
@@ -263,3 +262,20 @@ export default class MyVisionPreferences extends ExtensionPreferences
         this.#saveConfigs();
     }
 }
+
+/* 
+Copyright (C) 2024 Christophe Van den Abbeele, Tomáš Mark
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/

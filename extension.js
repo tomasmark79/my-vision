@@ -70,7 +70,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             } else {
                 Main.wm.removeKeybinding('display-configuration-switcher-shortcut-next');
                 Main.wm.removeKeybinding('display-configuration-switcher-shortcut-previous');
-            }         
+            }
         }
 
         _addKeyBinding(key, handler) {
@@ -86,18 +86,18 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
         destroy() {
             // Critical: disconnect all signals and clear timeouts first to prevent callbacks on destroyed objects
             this._displayConfigSwitcher.disconnectSignals();
-            
+
             if (this._configsChangedHandler) {
                 this._settings.disconnect(this._configsChangedHandler);
                 this._configsChangedHandler = null;
             }
-            
+
             // Fix memory leak - disconnect dialog handler if still connected
             if (this._dialogHandlerId) {
                 this._nameDialog.disconnect(this._dialogHandlerId);
                 this._dialogHandlerId = null;
             }
-            
+
             this._nameDialog.destroy();
 
             Main.wm.removeKeybinding('display-configuration-switcher-shortcut-next');
@@ -198,10 +198,10 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 // console.log(`\n=== Checking config: ${config[ConfigIndex.NAME]} ===`);
                 // console.log(`Saved hash: ${config[ConfigIndex.HASH]}`);
                 // console.log(`Current hash: ${currentConfig[ConfigIndex.HASH]}`);
-                
+
                 // First try hash comparison (fastest)
                 let isMatch = config[ConfigIndex.HASH] === currentConfig[ConfigIndex.HASH];
-                
+
                 // Secondary check to prevent hash collisions: verify physical displays match
                 if (isMatch) {
                     const physicalMatch = compareConfigsByPhysicalProperties(config, currentConfig);
@@ -210,9 +210,9 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                         isMatch = false;
                     }
                 }
-                
+
                 // console.log(`Direct hash match: ${isMatch}`);
-                
+
                 // If hash doesn't match, try remapped comparison
                 // (handles connector swaps where physical displays are same but connectors changed)
                 if (!isMatch) {
@@ -220,7 +220,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                         config[ConfigIndex.LOGICAL_MONITORS],
                         config[ConfigIndex.PHYSICAL_DISPLAYS]
                     );
-                    
+
                     // Create temporary config with remapped data for hash comparison
                     const tempConfig = [...config];
                     tempConfig[ConfigIndex.LOGICAL_MONITORS] = remappedLogicalMonitors;
@@ -229,9 +229,9 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                         v.displayName
                     ]);
                     updateConfigHash(tempConfig);
-                    
+
                     // console.log(`Remapped hash: ${tempConfig[ConfigIndex.HASH]}`);
-                    
+
                     isMatch = tempConfig[ConfigIndex.HASH] === currentConfig[ConfigIndex.HASH];
                     // console.log(`Remapped hash match: ${isMatch}`);
                 }
@@ -255,15 +255,15 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 for (let logicalMonitor of currentConfig[ConfigIndex.LOGICAL_MONITORS]) {
                     for (let monitor of logicalMonitor[5]) {
                         let monitorProps = monitor[2];
-                        if (monitorProps !== undefined) { 
-                           delete monitorProps["color-mode"];
-                        }    
-                    }           
+                        if (monitorProps !== undefined) {
+                            delete monitorProps["color-mode"];
+                        }
+                    }
                 }
                 // Calculate hash again
                 updateConfigHash(currentConfig);
                 const oldHash = currentConfig[ConfigIndex.HASH];
-                
+
                 // See if we find a match now
                 for (const [index, config] of this._configs.entries()) {
                     if (config[ConfigIndex.HASH] === oldHash) {
@@ -301,7 +301,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 // console.log('Already saving configs, preventing recursion');
                 return;
             }
-            
+
             this._isSaving = true;
             try {
                 const configsVariant = new GLib.Variant('a(sua(iiduba(ssa{sv}))a{sv}a(ss))', this._configs);
@@ -336,7 +336,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
 
             const currentIndex = this._currentConfigs.indexOf(this._activeConfig);
             let newIndex;
-            
+
             if (forward) {
                 newIndex = currentIndex === (nConfigs - 1) ? 0 : currentIndex + 1;
             } else {
@@ -360,7 +360,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
 
             // console.log(`_onConfig called for: ${config[ConfigIndex.NAME]}`);
             this._isApplyingConfig = true;
-            
+
             try {
                 // Remap connector names to handle connector swaps
                 const remappedLogicalMonitors = this._displayConfigSwitcher.remapConnectorsInConfig(
@@ -416,7 +416,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 // Add as new config
                 this._configs.push(currentConfig);
             }
-            
+
             this._saveConfigs();
             this._updateMenu();
         }
@@ -435,3 +435,20 @@ export default class MyVisionExtension extends Extension {
         this._indicator = null;
     }
 }
+
+/* 
+Copyright (C) 2024 Christophe Van den Abbeele, Tomáš Mark
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
