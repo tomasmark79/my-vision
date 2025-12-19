@@ -19,6 +19,13 @@ Quickly change the display configuration from the system menu.
 - ...
  
 ## Installation
+
+The recommended way to install the extension is via GNOME Extensions website:
+
+https://extensions.gnome.org/extension/9014/my-vision/
+
+Alternatively, you can clone this repository and build the extension manually.
+
 To build and install the extension, run:
 ```bash
 bash build.sh -bi
