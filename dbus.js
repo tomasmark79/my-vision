@@ -21,12 +21,9 @@ import GObject from 'gi://GObject';
 
 import { ConfigIndex, updateConfigHash } from './config.js'
 
-export const DisplayConfigSwitcher = GObject.registerClass({
-    Signals: {
-        'state-changed': {},
-    },
-}, class DisplayConfigSwitcher extends GObject.Object {
-    constructor(constructProperties = {}) {
+export const DisplayConfigSwitcher = GObject.registerClass(
+class DisplayConfigSwitcher extends GObject.Object {
+    constructor(onStateChanged = null, constructProperties = {}) {
         super(constructProperties);
         this._currentState = null;
         this._monitorsChangedHandler = null;
@@ -34,11 +31,12 @@ export const DisplayConfigSwitcher = GObject.registerClass({
         this._applyConfigTimeoutId = null;
         this._isApplyingConfig = false;
         this._destroyed = false;
+        this._onStateChangedCallback = onStateChanged;
 
         this._initProxy();
     }
 
-    disconnectSignals() {
+    destroy() {
         this._destroyed = true;
         if (this._proxy !== null && this._monitorsChangedHandler !== null) {
             this._proxy.disconnect(this._monitorsChangedHandler);
@@ -293,7 +291,9 @@ export const DisplayConfigSwitcher = GObject.registerClass({
             null
         );
         this._currentState = reply.recursiveUnpack();
-        this.emit('state-changed');
+        if (this._onStateChangedCallback) {
+            this._onStateChangedCallback();
+        }
     }
 
     hasState() {

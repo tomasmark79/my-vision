@@ -53,8 +53,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 this._onConfigsChanged();
             });
 
-            this._displayConfigSwitcher = new DisplayConfigSwitcher();
-            this._displayConfigSwitcher.connect('state-changed', () => {
+            this._displayConfigSwitcher = new DisplayConfigSwitcher(() => {
                 this._updateMenu();
             });
             this._nameDialog = new NameDialog();
@@ -102,7 +101,8 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
 
         destroy() {
             // Critical: disconnect all signals and clear timeouts first to prevent callbacks on destroyed objects
-            this._displayConfigSwitcher.disconnectSignals();
+            this._displayConfigSwitcher.destroy();
+            this._displayConfigSwitcher = null;
 
             if (this._configsChangedHandler) {
                 this._settings.disconnect(this._configsChangedHandler);
