@@ -6,6 +6,10 @@ is improved fork of [Display Configuration Switcher (GNOME Extension)](https://g
     <img style="margin: 0px auto 0px; display: block;" src="./data/icon/my-vision.svg" width="256" height="256"/>
 </div>
 
+<div>
+    <img style="margin: 0px auto 0px; display: block;" src="./screenshot2.png">
+</div>
+
 ## Description
 Quickly change the display configuration from the system menu.
 
