@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.my-vision" path="/org/gnome/shell/extensions/my-vision/">
+    <key name="configs" type="a(sua(iiduba(ssa{sv}))a{sv}a(ss))">
+      <default>[]</default>
+      <summary>List of all saved configurations.</summary>
+      <description>
+        List of all saved configurations:
+        array a() of configs:
+          s: name
+          u: hash
+          a(iiduba(ssa{sv})): logical_monitors
+          a{sv}: properties
+          a(ss): physical displays [connector, displayName]
+      </description>
+    </key>
+    <key name="last-config-index" type="u">
+      <default>0</default>
+      <summary>Global index of the most recently active configuration.</summary>
+    </key>
+    <key name="display-configuration-switcher-shortcut-next" type="as">
+      <default>['&lt;ctl&gt;semicolon']</default>
+      <summary>Shortcut to switch to next available configuration.</summary>
+    </key>
+    <key name="display-configuration-switcher-shortcut-previous" type="as">
+      <default>['&lt;shift&gt;&lt;ctl&gt;semicolon']</default>
+      <summary>Shortcut to switch to previous available configuration.</summary>
+    </key>
+    <key name="display-configuration-switcher-shortcuts-enabled" type="b">
+      <default>true</default>
+      <summary>Whether shortcuts should be enabled.</summary>
+    </key>
+  </schema>
+</schemalist>

@@ -1,0 +1,36 @@
+using Gtk 4.0;
+
+using Adw 1;
+
+Adw.PreferencesPage configPage {
+    title: _("Configurations");
+    icon-name: "video-display-symbolic";
+
+    Adw.PreferencesGroup {
+        title: _("Saved Configurations");
+        description: _("Rename or remove the saved display configurations.");
+
+        ListBox configListbox {
+            selection-mode: none;
+            styles ["boxed-list"]
+        }
+    }
+}
+
+Adw.PreferencesPage shortcutPage {
+    title: _("Shortcuts");
+    icon-name: "preferences-desktop-keyboard-shortcuts-symbolic";
+
+    Adw.PreferencesGroup {
+        title: _("Shortcuts");
+        description: _("Change keyboard shortcuts for switching display configurations.");
+        header-suffix: Switch shortcutSwitch {
+            valign: center;
+        };
+
+        ListBox shortcutListBox {
+            selection-mode: none;
+            styles ["boxed-list"]
+        }
+    }
+}

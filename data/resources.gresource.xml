@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/gnome/Shell/Extensions/my-vision">
+    <file preprocess="xml-stripblanks">ui/config_row.ui</file>
+    <file preprocess="xml-stripblanks">ui/config_row_drag_widget.ui</file>
+    <file preprocess="xml-stripblanks">ui/preferences_pages.ui</file>
+    <file preprocess="xml-stripblanks">ui/shortcut_dialog.ui</file>
+    <file preprocess="xml-stripblanks">ui/shortcut_row.ui</file>
+  </gresource>
+</gresources>

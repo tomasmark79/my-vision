@@ -1,0 +1,23 @@
+# Build artifacts
+*.gresource
+*.ui
+*.zip
+
+# Development environment
+*.envrc
+*.direnv
+.vscode/
+.idea/
+
+# Backup and temporary files
+*~
+*.swp
+*.swo
+*.bak
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Node modules (if using any JS tooling)
+node_modules/

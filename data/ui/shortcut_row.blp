@@ -1,0 +1,20 @@
+using Gtk 4.0;
+
+using Adw 1;
+
+template $ShortcutRow : Adw.ActionRow {
+    [suffix]
+    Label shortcutLabel {
+        valign: center;
+        styles ["keycap"]
+    }
+
+    [suffix]
+    Button {
+        icon-name: "document-edit-symbolic";
+        tooltip-text: _("Edit");
+        valign: center;
+
+        clicked => $_onEditButtonClicked();
+    }
+}

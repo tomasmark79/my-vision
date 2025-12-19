@@ -1,0 +1,38 @@
+using Gtk 4.0;
+
+using Adw 1;
+
+template $ConfigRow : Adw.EntryRow {
+    [prefix]
+    Image {
+        icon-name: "list-drag-handle-symbolic";
+    }
+
+    [suffix]
+    MenuButton {
+        icon-name: "dialog-information-symbolic";
+        tooltip-text: _("Debug Info");
+        valign: center;
+        direction: left;
+        popover: Popover {
+            ScrolledWindow {
+                propagate-natural-height: true;
+                propagate-natural-width: true;
+                Label infoLabel {
+                    selectable: true;
+                }
+            }
+        };
+    }
+
+    [suffix]
+    Button removeButton {
+        icon-name: "list-remove-symbolic";
+        tooltip-text: _("Remove Configuration");
+        valign: center;
+
+        styles ["destructive-action"]
+
+        clicked => $_onRemoveButtonClicked();
+    }
+}

@@ -1,0 +1,37 @@
+using Gtk 4.0;
+
+using Adw 1;
+
+template $ShortcutDialog : Adw.AlertDialog {
+  content-width: 500;
+  heading: _("Edit Shortcut Combination");
+  body: _("Please enter this shortcut\'s combination.");
+
+  Box {
+    orientation: vertical;
+    spacing: 12;
+
+    Label shortcutLabel {
+      halign: center;
+      styles ["keycap"]
+    }
+
+    Box {
+      halign: center;
+
+      orientation: horizontal;
+      spacing: 6;
+
+      Label {label: _("Press");}
+      Label {label: "Return"; styles ["keycap"]}
+      Label {label: _("to confirm, ");}
+      Label {label: "Escape"; styles ["keycap"]}
+      Label {label: _("to cancel.");}
+    }
+  }
+
+  responses [
+    cancel: _("Cancel"),
+    confirm: _("Confirm") suggested,
+  ]
+}

@@ -1,0 +1,14 @@
+{
+    "uuid": "my-vision@digitalspace.name",
+    "name": "My Vision",
+    "description": "MyVision is a fork of Display Configuration Switcher that has been thoughtfully and substantially enhanced. It allows users to store profiles that are directly bound to specific display devices. This approach eliminates the need for redundant profiles in scenarios where video outputs are detected or ordered unpredictably.",
+    "shell-version": [
+        "46",
+        "47",
+        "48",
+        "49"
+    ],
+    "url": "https://github.com/tomasmark79/my-vision",
+    "settings-schema": "org.gnome.shell.extensions.my-vision",
+    "version": 6
+}
