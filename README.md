@@ -1,14 +1,16 @@
 # My-Vision
-is improved fork of Display Configuration Switcher
+
+<div align="center">
+    <img style="margin: 0px auto 0px; display: block;" src="./data/icon/my-vision.svg" width="256" height="256"/>
+</div>
+
+improved fork of Display Configuration Switcher
 
 > 🌱 **Help Keep This Going**
 > Your support makes a real difference. If you value my work and want to help me continue creating, please consider making a donation.  
 > 💙 **Donate here:** [https://paypal.me/TomasMark](https://paypal.me/TomasMark)
 > Every contribution is truly appreciated ✨
 
-<div>
-    <img style="margin: 0px auto 0px; display: block;" src="./data/icon/my-vision.svg" width="256" height="256"/>
-</div>
 
 <div align="center">
     <img style="margin: 0px 10px 0px; display: inline-block;" src="./screen01.png" width="400">
