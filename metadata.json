@@ -10,5 +10,9 @@
     ],
     "url": "https://github.com/tomasmark79/my-vision",
     "settings-schema": "org.gnome.shell.extensions.my-vision",
-    "version": 9
+    "donations": {
+        "custom": [
+            "https://paypal.me/TomasMark"
+        ]
+    }
 }

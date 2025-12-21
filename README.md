@@ -1,22 +1,26 @@
 # My-Vision
+is improved fork of Display Configuration Switcher
 
-is improved fork of [Display Configuration Switcher (GNOME Extension)](https://gitlab.com/knokelmaat/display-configuration-switcher-gnome-extension)
+> 🌱 **Help Keep This Going**
+> Your support makes a real difference. If you value my work and want to help me continue creating, please consider making a donation.  
+> 💙 **Donate here:** [https://paypal.me/TomasMark](https://paypal.me/TomasMark)
+> Every contribution is truly appreciated ✨
 
 <div>
     <img style="margin: 0px auto 0px; display: block;" src="./data/icon/my-vision.svg" width="256" height="256"/>
 </div>
 
-<div>
-    <img style="margin: 0px auto 0px; display: block;" src="./screenshot2.png">
+<div align="center">
+    <img style="margin: 0px 10px 0px; display: inline-block;" src="./screen01.png" width="400">
+    <img style="margin: 0px 10px 0px; display: inline-block;" src="./screen02.png" width="400">
 </div>
 
 ## Description
 Quickly change the display configuration from the system menu.
 
-## Impovements over the original extension
-- Supports multiple monitors independently on video outputs order
-- Fixed couple of bugs in original code
-- ...
+## Impovements over the original Display Configuration Switcher
+- the order of video output connectors does not matter, the target is always identified by the display name
+- fixed some other bugs from the original version
  
 ## Installation
 
@@ -36,18 +40,9 @@ It is also possible to add `-l` to immediately logout the GNOME session after th
 bash build.sh -bil
 ```
 
-## Support
-If you have any problems or requests, please add them to the issue tracker of this repository.
-
-## Contributing
-Any and all contributions are welcome! I am not a javascript programmer, so suggestions on style and practices are also welcome.
-
 ## Authors and acknowledgment
 Tomáš Mark (current maintainer on this repository)
 Christophe Van den Abbeele (original author)
 
 ## License
 GPLv3 - Copyright (C) 2024 Tomáš Mark
-
-## Project status
-Alive and kicking.
