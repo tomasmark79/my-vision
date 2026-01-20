@@ -14,13 +14,17 @@
 ## Screenshots
 
 <div align="center">
-    <img style="margin: 0px 10px 0px; display: inline-block;" src="./screen01.png" width="400">
-    <img style="margin: 0px 10px 0px; display: inline-block;" src="./screen02.png" width="400">
+    <img style="margin: 0px 10px 0px; display: inline-block;" src="./screen01.png" width="150">
+    <img style="margin: 0px 10px 0px; display: inline-block;" src="./screen02.png" width="250">
 </div>
 
 ## Description
 
 My Vision allows you to store and quickly switch between multiple display configuration profiles directly from the GNOME system menu. Profiles are bound to specific display devices, eliminating the need for redundant profiles in scenarios where video outputs are detected or ordered unpredictably.
+
+## Notice
+
+If you change the language settings in system wide LOCALE, existing profiles may become invalid and you will need to create new ones. Profiles have their own hash fingerprint composed of device descriptions, and different languages generate different hash fingerprints. When you revert LOCALE to its original values, the original profiles will start working again. You may have lot of profiles for lot of LOCALE configurations.
 
 ## Features
 
