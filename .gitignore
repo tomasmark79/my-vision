@@ -1,7 +1,6 @@
 # Build artifacts
 *.gresource
 *.ui
-*.zip
 
 # Development environment
 *.envrc
