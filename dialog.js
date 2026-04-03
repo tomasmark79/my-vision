@@ -45,6 +45,8 @@ class NameDialog extends ModalDialog.ModalDialog {
         this._message = new St.Label();
         this._entry = new St.Entry();
         this._entry.clutter_text.connect('activate', () => {
+            if (this._entry.get_text().trim() === '')
+                return;
             this._valid = true;
             this.close();
         })
@@ -68,6 +70,8 @@ class NameDialog extends ModalDialog.ModalDialog {
             {
                 label: 'Confirm',
                 action: () => {
+                    if (this._entry.get_text().trim() === '')
+                        return;
                     this._valid = true;
                     this.close();
                 },

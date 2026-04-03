@@ -340,11 +340,10 @@ export class PrefsWidgets {
     }
 
     static clear() {
-        this.#ConfigRow = null;
-        this.#ConfigRowDragWidget = null;
-        this.#ShortcutDialog = null;
-        this.#ShortcutRow = null;
-
+        // Note: class references are intentionally NOT nulled here.
+        // GJS does not allow re-registering GObject types with the same GTypeName,
+        // so resetting them would cause a "Type name … is already registered" crash
+        // the next time the preferences window is opened.
         this.#shortcutDialog = null;
     }
 
