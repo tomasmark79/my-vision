@@ -48,6 +48,7 @@ If you change the language settings in system wide LOCALE, existing profiles may
 | 47                  |
 | 48                  |
 | 49                  |
+| 50                  |
 
 ## Installation
 

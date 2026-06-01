@@ -52,6 +52,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             this._configsChangedHandler = this._settings.connect('changed::configs', () => {
                 this._onConfigsChanged();
             });
+            this._shortcutsEnabledHandler = null;
 
             this._displayConfigSwitcher = new DisplayConfigSwitcher(() => {
                 this._updateMenu();
@@ -68,7 +69,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
 
             this._onConfigsChanged();
 
-            this._settings.connect('changed::display-configuration-switcher-shortcuts-enabled', (settings, key) => {
+            this._shortcutsEnabledHandler = this._settings.connect('changed::display-configuration-switcher-shortcuts-enabled', () => {
                 this._updateKeyBindings();
             });
 
@@ -107,6 +108,11 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             if (this._configsChangedHandler) {
                 this._settings.disconnect(this._configsChangedHandler);
                 this._configsChangedHandler = null;
+            }
+
+            if (this._shortcutsEnabledHandler) {
+                this._settings.disconnect(this._shortcutsEnabledHandler);
+                this._shortcutsEnabledHandler = null;
             }
 
             // Fix memory leak - disconnect dialog handler if still connected
@@ -178,7 +184,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 const lastConfig = this._configs.length > this._lastConfigIndex ? this._configs[this._lastConfigIndex] : null;
                 if (lastConfig !== null && (this._currentConfigs.indexOf(lastConfig) > -1)) {
                     this._onConfig(lastConfig).catch(err => {
-                        console.error('Failed to load default monitor configuration:', err);
+                        logError(err, 'Failed to load default monitor configuration');
                         Main.notify('Display Configuration Error', `Failed to load default configuration: ${err.message}`);
                     });
                 }
@@ -207,7 +213,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 configItem.connect('activate', () => {
                     // console.log(`Clicked on config: ${config[ConfigIndex.NAME]}`);
                     this._onConfig(config).catch(err => {
-                        console.error('Failed to apply monitor configuration:', err);
+                        logError(err, 'Failed to apply monitor configuration');
                         Main.notify('Display Configuration Error', `Failed to apply "${config[ConfigIndex.NAME]}": ${err.message}`);
                     });
                 });
@@ -223,7 +229,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 if (isMatch) {
                     const physicalMatch = compareConfigsByPhysicalProperties(config, currentConfig);
                     if (!physicalMatch) {
-                        console.warn(`WARNING: Hash collision detected! Hashes match but physical displays differ.`);
+                        log('WARNING: Hash collision detected! Hashes match but physical displays differ.');
                         isMatch = false;
                     }
                 }
@@ -345,7 +351,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 try {
                     await this._onConfig(this._currentConfigs[0]);
                 } catch (error) {
-                    console.error('Failed to apply first monitor configuration:', error);
+                    logError(error, 'Failed to apply first monitor configuration');
                     Main.notify('Display Configuration Error', `Failed to apply configuration: ${error.message}`);
                 }
                 return;
@@ -363,7 +369,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             try {
                 await this._onConfig(this._currentConfigs[newIndex]);
             } catch (error) {
-                console.error('Failed to cycle monitor configuration:', error);
+                logError(error, 'Failed to cycle monitor configuration');
                 Main.notify('Display Configuration Error', `Failed to switch configuration: ${error.message}`);
             }
         }
@@ -388,7 +394,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 await this._displayConfigSwitcher.applyMonitorsConfig(remappedLogicalMonitors, config[ConfigIndex.PROPERTIES]);
                 // console.log(`Config applied successfully`);
             } catch (error) {
-                console.error('Error applying monitor configuration:', error);
+                logError(error, 'Error applying monitor configuration');
             } finally {
                 this._isApplyingConfig = false;
             }

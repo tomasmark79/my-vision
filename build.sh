@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 EXTENSION_UUID="my-vision@digitalspace.name"
-ZIP_NAME="${EXTENSION_UUID}.zip"
+ZIP_NAME="${EXTENSION_UUID}.shell-extension.zip"
 
 SOURCES="
     config.js
