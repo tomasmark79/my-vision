@@ -1,15 +1,12 @@
 # My-Vision
 
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?logo=paypal)](https://paypal.me/TomasMark)
+
 <div align="center">
     <img style="margin: 0px auto 0px; display: block;" src="./data/icon/my-vision.svg" width="256" height="256"/>
 </div>
 
 **Improved fork of Display Configuration Switcher for GNOME Shell**
-
-> 🌱 **Help Keep This Going**  
-> Your support makes a real difference. If you value my work and want to help me continue creating, please consider making a donation.  
-> 💙 **Donate here:** [https://paypal.me/TomasMark](https://paypal.me/TomasMark)  
-> Every contribution is truly appreciated ✨
 
 ## Screenshots
 
@@ -28,11 +25,11 @@ If you change the language settings in system wide LOCALE, existing profiles may
 
 ## Features
 
-- 🖥️ Save and restore display configurations with a single click
-- ⌨️ Keyboard shortcuts support for fast profile switching
-- 🔄 Profiles are bound to physical display names (not port order)
-- 📋 Drag & drop reordering of saved configurations
-- ⚡ Quick access from the GNOME Quick Settings menu
+- Save and restore display configurations with a single click
+- Keyboard shortcuts support for fast profile switching
+- Profiles are bound to physical display names (not port order)
+- Drag & drop reordering of saved configurations
+- Quick access from the GNOME Quick Settings menu
 
 ## Improvements over the original Display Configuration Switcher
 
