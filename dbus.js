@@ -19,25 +19,33 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 
-import { ConfigIndex, updateConfigHash } from './config.js'
+import { ConfigIndex, updateConfigHash, matchesMonitorsConfig } from './config.js'
 
 export const DisplayConfigSwitcher = GObject.registerClass(
 class DisplayConfigSwitcher extends GObject.Object {
     constructor(onStateChanged = null, constructProperties = {}) {
         super(constructProperties);
+        this._proxy = null;
+        this._cancellable = new Gio.Cancellable();
+        this._stateRequestId = 0;
         this._currentState = null;
         this._monitorsChangedHandler = null;
         this._updateStateTimeoutId = null;
-        this._applyConfigTimeoutId = null;
         this._isApplyingConfig = false;
         this._destroyed = false;
         this._onStateChangedCallback = onStateChanged;
 
-        this._initProxy();
+        this._initProxy().catch(error => {
+            if (!this._destroyed)
+                logError(error, 'Failed to initialize display configuration');
+        });
     }
 
     destroy() {
         this._destroyed = true;
+        this._cancellable.cancel();
+        this._onStateChangedCallback = null;
+        this._stateRequestId++;
         if (this._proxy !== null && this._monitorsChangedHandler !== null) {
             this._proxy.disconnect(this._monitorsChangedHandler);
             this._monitorsChangedHandler = null;
@@ -46,10 +54,7 @@ class DisplayConfigSwitcher extends GObject.Object {
             GLib.source_remove(this._updateStateTimeoutId);
             this._updateStateTimeoutId = null;
         }
-        if (this._applyConfigTimeoutId !== null) {
-            GLib.source_remove(this._applyConfigTimeoutId);
-            this._applyConfigTimeoutId = null;
-        }
+        this._proxy = null;
     }
 
     async _initProxy() {
@@ -62,7 +67,7 @@ class DisplayConfigSwitcher extends GObject.Object {
             'org.gnome.Mutter.DisplayConfig',
             '/org/gnome/Mutter/DisplayConfig',
             'org.gnome.Mutter.DisplayConfig',
-            null
+            this._cancellable
         );
 
         if (this._destroyed) {
@@ -77,14 +82,15 @@ class DisplayConfigSwitcher extends GObject.Object {
                 this._debouncedUpdateState();
             });
 
-        this._updateState();
+        this._debouncedUpdateState();
     }
 
     _debouncedUpdateState() {
-        // Ignore monitor changes while we're applying a config
-        if (this._isApplyingConfig) {
+        if (this._destroyed)
             return;
-        }
+
+        // Invalidate reads started before this monitor change.
+        this._stateRequestId++;
 
         // Clear any pending update
         if (this._updateStateTimeoutId !== null) {
@@ -95,7 +101,12 @@ class DisplayConfigSwitcher extends GObject.Object {
         // 500ms delay gives monitors time to fully initialize after connection
         this._updateStateTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
             this._updateStateTimeoutId = null;
-            this._updateState();
+            if (this._isApplyingConfig)
+                return GLib.SOURCE_REMOVE;
+            this._updateState().catch(error => {
+                if (!this._destroyed)
+                    logError(error, 'Failed to refresh display configuration');
+            });
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -206,8 +217,8 @@ class DisplayConfigSwitcher extends GObject.Object {
                         }
                     }
                     
-                    // Use current mode_id if available, otherwise keep saved mode_id
-                    const validModeId = currentDisplay.mode_id || modeId;
+                    // Connector changes must not replace the saved resolution/refresh rate.
+                    const validModeId = modeId;
                     
                     // console.log(`Remapping ${connector} -> ${newConnector}, mode_id: ${modeId} (${typeof modeId}) -> ${validModeId} (${typeof validModeId})`);
                     
@@ -226,74 +237,54 @@ class DisplayConfigSwitcher extends GObject.Object {
     }
 
     async applyMonitorsConfig(logicalMonitors, properties, usePrompt = false) {
-        if (this._proxy === null) {
-            log('Proxy is not initialized');
-            throw new Error('Proxy is not initialized');
-        }
-
-        const parameters = new GLib.Variant('(uua(iiduba(ssa{sv}))a{sv})', [
-            this._currentState[0],
-            usePrompt ? 2 : 1,
-            logicalMonitors,
-            properties,
-        ]);
+        if (this._destroyed || this._proxy === null || this._currentState === null)
+            throw new Error('Display configuration is not ready');
+        if (this._isApplyingConfig)
+            return;
 
         this._isApplyingConfig = true;
-
-        // console.log('Applying monitors config:', JSON.stringify(logicalMonitors, null, 2));
-
         try {
+            // Refresh the serial and check the actual layout before sending a modeset.
+            // Do not publish this intermediate read to the menu.
+            if (!await this._updateState(false))
+                throw new Error('Displays changed while preparing the configuration; try again');
+            if (matchesMonitorsConfig(logicalMonitors, properties, this.getMonitorsConfig()))
+                return;
+
+            const parameters = new GLib.Variant('(uua(iiduba(ssa{sv}))a{sv})', [
+                this._currentState[0],
+                usePrompt ? 2 : 1,
+                logicalMonitors,
+                properties,
+            ]);
             await this._proxy.call(
-                'ApplyMonitorsConfig',
-                parameters,
-                Gio.DBusCallFlags.NONE,
-                -1,
-                null
+                'ApplyMonitorsConfig', parameters, Gio.DBusCallFlags.NONE,
+                -1, this._cancellable
             );
-            
-            // Give the system time to apply the config before we respond to MonitorsChanged
-            // Increased timeout from 500ms to 1000ms to prevent race conditions on slower systems
-            // Remove any existing apply timeout before creating a new one
-            if (this._applyConfigTimeoutId !== null) {
-                GLib.source_remove(this._applyConfigTimeoutId);
-                this._applyConfigTimeoutId = null;
-            }
-            
-            await new Promise(resolve => {
-                this._applyConfigTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
-                    this._applyConfigTimeoutId = null;
-                    resolve();
-                    return GLib.SOURCE_REMOVE;
-                });
-            });
-        } catch (error) {
-            console.error('Failed to apply monitors config via DBus:', error);
-            throw error;
         } finally {
             this._isApplyingConfig = false;
-            // Trigger an update now that config is applied
-            this._updateState();
+            // Keep MonitorsChanged events, including those emitted during Apply.
+            // No pending Promise depends on a timer that destroy() can remove.
+            this._debouncedUpdateState();
         }
     }
 
-    async _updateState() {
-        // Prevent crash if called after destroy
-        if (this._proxy === null) {
-            // console.log('Proxy is null, ignoring _updateState call');
-            return;
-        }
-        
+    async _updateState(notify = true) {
+        if (this._destroyed || this._proxy === null)
+            return false;
+
+        const requestId = ++this._stateRequestId;
         const reply = await this._proxy.call(
-            'GetCurrentState',
-            null,
-            Gio.DBusCallFlags.NONE,
-            -1,
-            null
+            'GetCurrentState', null, Gio.DBusCallFlags.NONE,
+            -1, this._cancellable
         );
+        if (this._destroyed || requestId !== this._stateRequestId)
+            return false;
+
         this._currentState = reply.recursiveUnpack();
-        if (this._onStateChangedCallback) {
+        if (notify && this._onStateChangedCallback)
             this._onStateChangedCallback();
-        }
+        return true;
     }
 
     hasState() {

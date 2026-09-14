@@ -95,6 +95,25 @@ bash build.sh -bil
 4. Switch between saved configurations with a single click
 5. Optionally, set up keyboard shortcuts in extension preferences
 
+## Startup behavior and verification
+
+The last selected profile is restored after GNOME Shell finishes startup and monitor
+change events have been quiet for 500 ms. The extension refreshes Mutter's state
+before applying a profile and skips the request when that layout is already active.
+A different saved layout can still require a visible display mode change.
+
+Run the regression checks without changing the running desktop:
+
+```bash
+gjs -m tests/display-config.js
+node --test tests/startup.cjs
+```
+
+The tests use a simulated D-Bus transport. To verify the hardware behavior, install
+the updated extension and log out/in with the saved profile already active, then
+repeat with a different saved profile. Also check disabling/re-enabling the
+extension and switching profiles with different resolutions or refresh rates.
+
 ## Authors and Acknowledgment
 
 - **Tomáš Mark** — current maintainer ([GitHub](https://github.com/tomasmark79))

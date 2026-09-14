@@ -45,6 +45,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
 
             this.menu.setHeader('video-display-symbolic', 'Display Configuration');
 
+            this._destroyed = false;
             this._extension = extension;
             this._settings = this._extension.getSettings();
             this._lastConfigIndex = this._settings.get_uint('last-config-index');
@@ -56,12 +57,12 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
 
             this._displayConfigSwitcher = new DisplayConfigSwitcher(() => {
                 this._updateMenu();
+                this._loadDefaultIfNeeded();
             });
             this._nameDialog = new NameDialog();
             this._dialogHandlerId = null;
             this._configs = [];
             this._currentConfigs = [];
-            this._applyingConfig = false;
             this._isApplyingConfig = false;  // Mutex to prevent concurrent config applications
             this._isSaving = false;  // Flag to prevent recursion in _saveConfigs
 
@@ -101,6 +102,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
         }
 
         destroy() {
+            this._destroyed = true;
             // Critical: disconnect all signals and clear timeouts first to prevent callbacks on destroyed objects
             this._displayConfigSwitcher.destroy();
             this._displayConfigSwitcher = null;
@@ -149,7 +151,6 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             this.menu.removeAll();
 
             this._filterConfigs();
-            this._loadDefaultIfNeeded();
             if (!this._addConfigItems()) { return; }
 
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -335,7 +336,9 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
         }
 
         _saveLastConfigIndex(i) {
-            this._settings.set_uint('last-config-index', i);
+            // Do not replace the startup selection with Mutter's intermediate layout.
+            if (this._lastConfigLoaded)
+                this._settings.set_uint('last-config-index', i);
         }
 
         async _onClicked() {
@@ -375,6 +378,8 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
         }
 
         async _onConfig(config) {
+            // An explicit selection takes precedence over automatic restoration.
+            this._lastConfigLoaded = true;
             // Mutex: prevent concurrent config applications
             if (this._isApplyingConfig) {
                 // console.log(`Already applying a config, ignoring request for: ${config[ConfigIndex.NAME]}`);
@@ -394,7 +399,9 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 await this._displayConfigSwitcher.applyMonitorsConfig(remappedLogicalMonitors, config[ConfigIndex.PROPERTIES]);
                 // console.log(`Config applied successfully`);
             } catch (error) {
-                logError(error, 'Error applying monitor configuration');
+                // Disabling the extension cancels in-flight D-Bus calls normally.
+                if (!this._destroyed)
+                    throw error;
             } finally {
                 this._isApplyingConfig = false;
             }
@@ -447,12 +454,32 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
 
 export default class MyVisionExtension extends Extension {
     enable() {
+        this._indicator = null;
+        this._startupHandlerId = null;
+        if (Main.layoutManager._startingUp) {
+            this._startupHandlerId = Main.layoutManager.connect('startup-complete', () => {
+                Main.layoutManager.disconnect(this._startupHandlerId);
+                this._startupHandlerId = null;
+                this._createIndicator();
+            });
+        } else {
+            this._createIndicator();
+        }
+    }
+
+    _createIndicator() {
         this._indicator = new QuickSettings.SystemIndicator();
         this._indicator.quickSettingsItems.push(new DisplayConfigQuickMenuToggle(this));
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
     }
 
     disable() {
+        if (this._startupHandlerId !== null) {
+            Main.layoutManager.disconnect(this._startupHandlerId);
+            this._startupHandlerId = null;
+        }
+        if (this._indicator === null)
+            return;
         this._indicator.quickSettingsItems.forEach(item => item.destroy());
         this._indicator.destroy();
         this._indicator = null;

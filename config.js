@@ -117,3 +117,35 @@ export function compareConfigsByPhysicalProperties(config1, config2) {
     
     return true;
 }
+
+// Compare the effective request, independently of array/dictionary ordering and
+// without a hash collision risk. Omitted properties leave Mutter's values alone.
+export function matchesMonitorsConfig(logicalMonitors, properties, currentConfig) {
+    if (currentConfig === null)
+        return false;
+
+    const unpack = value => value instanceof GLib.Variant ? value.recursiveUnpack() : value;
+    const propertiesMatch = (requested, current) => Object.entries(requested).every(
+        ([key, value]) => unpack(value) === unpack(current[key])
+    );
+    const sortMonitors = monitors => [...monitors].sort((a, b) => a[0].localeCompare(b[0]));
+    const sortLogical = monitors => [...monitors].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const requested = sortLogical(logicalMonitors);
+    const current = sortLogical(currentConfig[ConfigIndex.LOGICAL_MONITORS]);
+    if (requested.length !== current.length ||
+        !propertiesMatch(properties, currentConfig[ConfigIndex.PROPERTIES]))
+        return false;
+
+    return requested.every((logical, index) => {
+        const active = current[index];
+        if (!logical.slice(0, 5).every((value, i) => value === active[i]))
+            return false;
+        const monitors = sortMonitors(logical[5]);
+        const activeMonitors = sortMonitors(active[5]);
+        return monitors.length === activeMonitors.length && monitors.every((monitor, i) =>
+            monitor[0] === activeMonitors[i][0] &&
+            monitor[1] === activeMonitors[i][1] &&
+            propertiesMatch(monitor[2], activeMonitors[i][2])
+        );
+    });
+}
