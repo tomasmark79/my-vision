@@ -11,8 +11,8 @@
 ## Screenshots
 
 <div align="center">
-    <img style="margin: 0px 10px 0px; display: inline-block;" src="./screen01.png" width="150">
-    <img style="margin: 0px 10px 0px; display: inline-block;" src="./screen02.png" width="250">
+    <img style="margin: 0px 10px 0px; display: inline-block;" src="./assets/screen01.png" width="150">
+    <img style="margin: 0px 10px 0px; display: inline-block;" src="./assets/screen02.png" width="250">
 </div>
 
 ## Description
