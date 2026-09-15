@@ -8,8 +8,16 @@ function menuFixture() {
         .replace(/^import .*;?\n/gm, '')
         .replace('export default class MyVisionExtension', 'class MyVisionExtension');
     const notices = [];
+    class Cancelled extends Error {}
+    const cancellable = {
+        cancelled: false,
+        cancel() {this.cancelled = true;},
+        is_cancelled() {return this.cancelled;},
+        set_error_if_cancelled() {if (this.cancelled) throw new Cancelled();},
+    };
     const context = vm.createContext({
         GObject: {registerClass: klass => klass}, QuickSettings: {QuickMenuToggle: class {}},
+        isCancelled: error => error instanceof Cancelled,
         Extension: class {}, Main: {notify: (...args) => notices.push(args)}, console: {warn() {}},
         selectProfile: (profiles, id) => profiles.find(p => p.id === id) ?? profiles[0],
     });
@@ -19,7 +27,7 @@ function menuFixture() {
     const closed = {id: 'closed', config: ['Closed']};
     const open = {id: 'open', config: ['Open']};
     Object.assign(menu, {
-        _destroyed: false, _context: null, _handledContext: false, _retryCount: 0,
+        _cancellable: cancellable, _context: null, _handledContext: false, _retryCount: 0,
         _isApplyingConfig: false, _pendingProfile: null,
         _store: {profiles: [closed, open], last: {}, enrich() {}, remember(key, id) {this.last[key] = id;}},
         _displayConfigSwitcher: {getPhysicalDisplayInfo: () => [], getLidState: () => key, applyProfile: async () => {}},
@@ -72,8 +80,26 @@ test('transient stale-state retries are bounded', async () => {
 test('disable during apply neither writes settings nor notifies', async () => {
     const {menu, notices} = menuFixture(); const pending = deferred();
     menu._displayConfigSwitcher.applyProfile = () => pending.promise;
-    menu._onStateChanged(); menu._destroyed = true;
+    menu._onStateChanged(); menu._cancellable.cancel();
+    menu._cancellable = null;
     pending.resolve(); await tick();
     assert.deepEqual(menu._store.last, {});
+    assert.equal(notices.length, 0);
+});
+
+test('cancellation while saving cannot access released settings or UI', async () => {
+    const {menu, notices} = menuFixture(); const pending = deferred();
+    menu._nameDialog = {disconnect() {}, isValid: () => true, getName: () => 'Saved'};
+    menu._dialogHandlerId = 1;
+    menu._dialogContext = 'closed';
+    menu._displayConfigSwitcher.refresh = () => pending.promise;
+    const save = menu._onNameDialogClosed();
+    menu._cancellable.cancel();
+    menu._cancellable = null;
+    menu._store = null;
+    menu._displayConfigSwitcher = null;
+    menu._nameDialog = null;
+    pending.resolve(true);
+    await save;
     assert.equal(notices.length, 0);
 });

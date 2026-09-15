@@ -54,3 +54,36 @@ test('enabling in a running session initializes immediately', () => {
     assert.equal(count(), 1);
     assert.equal(handlers.size, 0);
 });
+
+test('enable after cancelling startup initializes only the new registration', () => {
+    const {extension, handlers, count} = load(true);
+    extension.enable();
+    extension.disable();
+    extension.enable();
+    assert.equal(handlers.size, 1);
+    handlers.get(1)();
+    assert.equal(count(), 1);
+    assert.equal(handlers.size, 0);
+});
+
+test('repeated enable/disable cycles release indicators and child references', () => {
+    const {extension} = load(false);
+    let childrenDestroyed = 0;
+    let indicatorsDestroyed = 0;
+    extension._createIndicator = () => {
+        extension._indicator = {
+            quickSettingsItems: [{destroy() {childrenDestroyed++;}}],
+            destroy() {
+                assert.equal(this.quickSettingsItems.length, 0);
+                indicatorsDestroyed++;
+            },
+        };
+    };
+    for (let i = 0; i < 3; i++) {
+        extension.enable();
+        extension.disable();
+        assert.equal(extension._indicator, null);
+    }
+    assert.equal(childrenDestroyed, 3);
+    assert.equal(indicatorsDestroyed, 3);
+});

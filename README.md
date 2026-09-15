@@ -141,6 +141,7 @@ Run regression checks without changing the running desktop:
 glib-compile-schemas --strict schemas
 GSETTINGS_BACKEND=memory gjs -m tests/profiles.js
 gjs -m tests/display-config.js
+gjs -m tests/initialization.js
 node --test tests/startup.cjs tests/restore.cjs
 ```
 

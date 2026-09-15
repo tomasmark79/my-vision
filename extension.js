@@ -15,6 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
@@ -23,7 +24,7 @@ import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/ex
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
-import {DisplayConfigSwitcher} from './dbus.js';
+import {DisplayConfigSwitcher, isCancelled} from './dbus.js';
 import {NameDialog} from './dialog.js';
 import {ProfileStore, activeProfile, contextKey, displayRecord, profileLabel, profileRequest, selectProfile} from './profiles.js';
 
@@ -35,7 +36,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             this._extension = extension;
             this._settings = extension.getSettings();
             this._store = new ProfileStore(this._settings);
-            this._destroyed = false;
+            this._cancellable = new Gio.Cancellable();
             this._isApplyingConfig = false;
             this._context = null;
             this._handledContext = false;
@@ -71,8 +72,6 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
         }
 
         _onStateChanged() {
-            if (this._destroyed)
-                return;
             const key = this._getContext();
             if (key !== this._context) {
                 this._context = key;
@@ -94,8 +93,6 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
         }
 
         _updateMenu() {
-            if (this._destroyed)
-                return;
             this.menu.removeAll();
             this.subtitle = null;
             this.checked = false;
@@ -146,7 +143,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
         }
 
         async _onConfig(profile, automatic = false) {
-            if (!profile || this._destroyed)
+            if (!profile)
                 return;
             if (this._isApplyingConfig) {
                 if (!automatic)
@@ -156,15 +153,17 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             const key = this._getContext();
             if (key === null)
                 return;
+            const cancellable = this._cancellable;
             this._handledContext = true;
             this._isApplyingConfig = true;
             try {
                 await this._displayConfigSwitcher.applyProfile(profile);
-                if (!this._destroyed && this._getContext() === key &&
+                cancellable.set_error_if_cancelled();
+                if (this._getContext() === key &&
                     this._store.profiles.some(p => p.id === profile.id))
                     this._store.remember(key, profile.id);
             } catch (error) {
-                if (!this._destroyed) {
+                if (!cancellable.is_cancelled() && !isCancelled(error)) {
                     // A changed lid/topology supersedes the old request. The next
                     // state callback will restore the new context exactly once.
                     if (this._getContext() !== key)
@@ -177,12 +176,14 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                     }
                 }
             } finally {
-                this._isApplyingConfig = false;
-                if (!this._destroyed && this._pendingProfile) {
-                    const pending = this._pendingProfile;
-                    this._pendingProfile = null;
-                    if (pending.context === this._getContext())
-                        this._onConfig(this._store.profiles.find(p => p.id === pending.id));
+                if (!cancellable.is_cancelled()) {
+                    this._isApplyingConfig = false;
+                    if (this._pendingProfile) {
+                        const pending = this._pendingProfile;
+                        this._pendingProfile = null;
+                        if (pending.context === this._getContext())
+                            this._onConfig(this._store.profiles.find(p => p.id === pending.id));
+                    }
                 }
                 // The switcher publishes a debounced fresh state after Apply.
             }
@@ -206,11 +207,14 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 return;
             const name = this._nameDialog.getName().trim();
             const expectedContext = this._dialogContext;
+            const cancellable = this._cancellable;
             try {
-                if (this._isApplyingConfig || !await this._displayConfigSwitcher.refresh())
+                if (this._isApplyingConfig)
                     throw new Error('Displays are changing. Please save the configuration again.');
-                if (this._destroyed)
-                    return;
+                const refreshed = await this._displayConfigSwitcher.refresh();
+                cancellable.set_error_if_cancelled();
+                if (!refreshed)
+                    throw new Error('Displays are changing. Please save the configuration again.');
                 const key = this._getContext();
                 if (key === null || key !== expectedContext)
                     throw new Error('The lid or connected monitors changed. Please save the configuration again.');
@@ -228,23 +232,37 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 if (saved.id !== profile.id)
                     Main.notify('Display Configuration', `This configuration is already saved as “${saved.config[0]}”.`);
             } catch (error) {
-                if (!this._destroyed)
+                if (!cancellable.is_cancelled() && !isCancelled(error))
                     Main.notify('Display Configuration', error.message);
             }
         }
 
         destroy() {
-            this._destroyed = true;
-            this._displayConfigSwitcher.destroy();
             this._settings.disconnect(this._configsChangedHandler);
+            this._configsChangedHandler = null;
             this._settings.disconnect(this._shortcutsEnabledHandler);
-            if (this._dialogHandlerId !== null)
+            this._shortcutsEnabledHandler = null;
+            if (this._dialogHandlerId !== null) {
                 this._nameDialog.disconnect(this._dialogHandlerId);
-            this._nameDialog.destroy();
+                this._dialogHandlerId = null;
+            }
             Main.wm.removeKeybinding('display-configuration-switcher-shortcut-next');
             Main.wm.removeKeybinding('display-configuration-switcher-shortcut-previous');
+            this._cancellable.cancel();
+            this._cancellable = null;
+            this._displayConfigSwitcher.destroy();
+            this._displayConfigSwitcher = null;
+            this._nameDialog.destroy();
+            this._nameDialog = null;
+            this._pendingProfile = null;
+            this._currentConfigs = [];
+            this._activeConfig = null;
+            this._store = null;
+            this._settings = null;
+            this._extension = null;
             super.destroy();
         }
+
     });
 
 export default class MyVisionExtension extends Extension {
@@ -262,12 +280,6 @@ export default class MyVisionExtension extends Extension {
         }
     }
 
-    _createIndicator() {
-        this._indicator = new QuickSettings.SystemIndicator();
-        this._indicator.quickSettingsItems.push(new DisplayConfigQuickMenuToggle(this));
-        Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
-    }
-
     disable() {
         if (this._startupHandlerId !== null) {
             Main.layoutManager.disconnect(this._startupHandlerId);
@@ -275,8 +287,16 @@ export default class MyVisionExtension extends Extension {
         }
         if (this._indicator === null)
             return;
-        this._indicator.quickSettingsItems.forEach(item => item.destroy());
+        for (const item of this._indicator.quickSettingsItems.splice(0))
+            item.destroy();
         this._indicator.destroy();
         this._indicator = null;
     }
+    _createIndicator() {
+        this._indicator = new QuickSettings.SystemIndicator();
+        this._indicator.quickSettingsItems.push(new DisplayConfigQuickMenuToggle(this));
+        Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
+    }
+
+
 }

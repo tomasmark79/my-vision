@@ -22,6 +22,10 @@ import GObject from 'gi://GObject';
 import { ConfigIndex, updateConfigHash, matchesMonitorsConfig } from './config.js';
 import {mapDisplays, displayRecord, remapLogical, profileRequest, contextKey} from './profiles.js';
 
+export function isCancelled(error) {
+    return error instanceof GLib.Error && error.matches(Gio.io_error_quark(), Gio.IOErrorEnum.CANCELLED);
+}
+
 export const DisplayConfigSwitcher = GObject.registerClass(
 class DisplayConfigSwitcher extends GObject.Object {
     constructor(onStateChanged = null, constructProperties = {}) {
@@ -36,38 +40,38 @@ class DisplayConfigSwitcher extends GObject.Object {
         this._monitorsChangedHandler = null;
         this._updateStateTimeoutId = null;
         this._isApplyingConfig = false;
-        this._destroyed = false;
         this._onStateChangedCallback = onStateChanged;
 
         this._initProxy().catch(error => {
-            if (!this._destroyed)
+            if (!isCancelled(error))
                 logError(error, 'Failed to initialize display configuration');
         });
     }
 
     destroy() {
-        this._destroyed = true;
-        this._cancellable.cancel();
-        if (this._lidProxy) {
-            for (const handler of this._lidHandlers)
-                this._lidProxy.disconnect(handler);
-            this._lidProxy = null;
-        }
-        this._lidHandlers = [];
-        this._onStateChangedCallback = null;
-        this._stateRequestId++;
-        if (this._proxy !== null && this._monitorsChangedHandler !== null) {
-            this._proxy.disconnect(this._monitorsChangedHandler);
-            this._monitorsChangedHandler = null;
-        }
         if (this._updateStateTimeoutId !== null) {
             GLib.source_remove(this._updateStateTimeoutId);
             this._updateStateTimeoutId = null;
         }
+        if (this._proxy !== null && this._monitorsChangedHandler !== null) {
+            this._proxy.disconnect(this._monitorsChangedHandler);
+            this._monitorsChangedHandler = null;
+        }
+        if (this._lidProxy !== null) {
+            for (const handler of this._lidHandlers)
+                this._lidProxy.disconnect(handler);
+        }
+        this._lidHandlers = [];
+        this._cancellable.cancel();
+        this._cancellable = null;
+        this._onStateChangedCallback = null;
         this._proxy = null;
+        this._lidProxy = null;
+        this._currentState = null;
     }
 
     async _initProxy() {
+        const cancellable = this._cancellable;
         Gio._promisify(Gio.DBusProxy, 'new_for_bus');
 
         const proxy = await Gio.DBusProxy.new_for_bus(
@@ -77,12 +81,9 @@ class DisplayConfigSwitcher extends GObject.Object {
             'org.gnome.Mutter.DisplayConfig',
             '/org/gnome/Mutter/DisplayConfig',
             'org.gnome.Mutter.DisplayConfig',
-            this._cancellable
+            cancellable
         );
-
-        if (this._destroyed) {
-            return;
-        }
+        cancellable.set_error_if_cancelled();
 
         this._proxy = proxy;
         Gio._promisify(this._proxy, 'call');
@@ -93,17 +94,18 @@ class DisplayConfigSwitcher extends GObject.Object {
             });
 
         await this._initLidProxy();
+        cancellable.set_error_if_cancelled();
         this._debouncedUpdateState();
     }
 
     async _initLidProxy() {
+        const cancellable = this._cancellable;
         try {
             const proxy = await Gio.DBusProxy.new_for_bus(
                 Gio.BusType.SYSTEM, Gio.DBusProxyFlags.NONE, null,
                 'org.freedesktop.UPower', '/org/freedesktop/UPower',
-                'org.freedesktop.UPower', this._cancellable);
-            if (this._destroyed)
-                return;
+                'org.freedesktop.UPower', cancellable);
+            cancellable.set_error_if_cancelled();
             this._lidProxy = proxy;
             Gio._promisify(proxy, 'call');
             const update = () => {
@@ -117,8 +119,10 @@ class DisplayConfigSwitcher extends GObject.Object {
             this._lidHandlers.push(proxy.connect('notify::g-name-owner', update));
             update();
         } catch (error) {
-            if (!this._destroyed)
-                console.warn(`Cannot read laptop lid state: ${error.message}`);
+            cancellable.set_error_if_cancelled();
+            if (isCancelled(error))
+                throw error;
+            console.warn(`Cannot read laptop lid state: ${error.message}`);
         }
     }
 
@@ -130,29 +134,28 @@ class DisplayConfigSwitcher extends GObject.Object {
     }
 
     async refresh() {
+        const cancellable = this._cancellable;
         if (this._lidProxy) {
             try {
                 const reply = await this._lidProxy.call('org.freedesktop.DBus.Properties.GetAll',
                     new GLib.Variant('(s)', ['org.freedesktop.UPower']),
-                    Gio.DBusCallFlags.NONE, -1, this._cancellable);
+                    Gio.DBusCallFlags.NONE, -1, cancellable);
+                cancellable.set_error_if_cancelled();
                 const [props] = reply.recursiveUnpack();
-                if (!this._destroyed)
-                    this._lidState = props.LidIsPresent === false ? 'any' :
+                this._lidState = props.LidIsPresent === false ? 'any' :
                         props.LidIsPresent === true && typeof props.LidIsClosed === 'boolean'
                             ? (props.LidIsClosed ? 'closed' : 'open') : 'unknown';
             } catch (error) {
-                this._lidState = 'unknown';
-                if (this._destroyed)
+                cancellable.set_error_if_cancelled();
+                if (isCancelled(error))
                     throw error;
+                this._lidState = 'unknown';
             }
         }
         return this._updateState(false);
     }
 
     _debouncedUpdateState() {
-        if (this._destroyed)
-            return;
-
         // Invalidate reads started before this monitor change.
         this._stateRequestId++;
 
@@ -168,7 +171,7 @@ class DisplayConfigSwitcher extends GObject.Object {
             if (this._isApplyingConfig)
                 return GLib.SOURCE_REMOVE;
             this._updateState().catch(error => {
-                if (!this._destroyed)
+                if (!isCancelled(error))
                     logError(error, 'Failed to refresh display configuration');
             });
             return GLib.SOURCE_REMOVE;
@@ -220,17 +223,20 @@ class DisplayConfigSwitcher extends GObject.Object {
     }
 
     async applyMonitorsConfig(logicalMonitors, properties, usePrompt = false, profile = null) {
-        if (this._destroyed || this._proxy === null || this._currentState === null)
+        if (this._proxy === null || this._currentState === null)
             throw new Error('Display configuration is not ready');
         if (this._isApplyingConfig)
             return;
 
+        const cancellable = this._cancellable;
         const expectedContext = profile ? contextKey(this.getPhysicalDisplayInfo().map(displayRecord), this.getLidState()) : null;
         this._isApplyingConfig = true;
         try {
             // Refresh the serial and check the actual layout before sending a modeset.
             // Do not publish this intermediate read to the menu.
-            if (!await this.refresh()) {
+            const refreshed = await this.refresh();
+            cancellable.set_error_if_cancelled();
+            if (!refreshed) {
                 const error = new Error('Displays changed while preparing the configuration; try again');
                 error.code = 'STATE_CHANGED';
                 throw error;
@@ -250,26 +256,30 @@ class DisplayConfigSwitcher extends GObject.Object {
             ]);
             await this._proxy.call(
                 'ApplyMonitorsConfig', parameters, Gio.DBusCallFlags.NONE,
-                -1, this._cancellable
+                -1, cancellable
             );
+            cancellable.set_error_if_cancelled();
         } finally {
-            this._isApplyingConfig = false;
-            // Keep MonitorsChanged events, including those emitted during Apply.
-            // No pending Promise depends on a timer that destroy() can remove.
-            this._debouncedUpdateState();
+            // Cancelled operations must not schedule more work on their owner.
+            if (!cancellable.is_cancelled()) {
+                this._isApplyingConfig = false;
+                this._debouncedUpdateState();
+            }
         }
     }
 
     async _updateState(notify = true) {
-        if (this._destroyed || this._proxy === null)
+        if (this._proxy === null)
             return false;
 
+        const cancellable = this._cancellable;
         const requestId = ++this._stateRequestId;
         const reply = await this._proxy.call(
             'GetCurrentState', null, Gio.DBusCallFlags.NONE,
-            -1, this._cancellable
+            -1, cancellable
         );
-        if (this._destroyed || requestId !== this._stateRequestId)
+        cancellable.set_error_if_cancelled();
+        if (requestId !== this._stateRequestId)
             return false;
 
         this._currentState = reply.recursiveUnpack();

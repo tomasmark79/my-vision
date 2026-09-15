@@ -1,7 +1,8 @@
 // Run with: gjs -m tests/display-config.js
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import {ConfigIndex, matchesMonitorsConfig} from '../config.js';
-import {DisplayConfigSwitcher} from '../dbus.js';
+import {DisplayConfigSwitcher, isCancelled} from '../dbus.js';
 
 function assert(condition, message) {
     if (!condition)
@@ -74,8 +75,9 @@ const deferred = () => {
     const read = switcher._updateState();
     switcher.destroy();
     pending.resolve(reply(2));
-    await read;
-    assert(!notified && switcher._currentState[0] === 1, 'No callbacks or state changes after destroy');
+    let cancelled = false;
+    try { await read; } catch (error) { cancelled = isCancelled(error); }
+    assert(cancelled && !notified && switcher._currentState === null, 'Cancelled reads must not access released state');
 }
 {
     const switcher = makeSwitcher();
@@ -140,7 +142,7 @@ const deferred = () => {
     switcher.destroy();
     let rejected = false;
     try { await apply; } catch { rejected = true; }
-    assert(rejected && !switcher._isApplyingConfig, 'Destroy during Apply must settle the request');
+    assert(rejected && switcher._proxy === null, 'Destroy during Apply must settle the request and release resources');
     assert(switcher._updateStateTimeoutId === null, 'Destroy must not schedule another refresh');
 }
 print('Display configuration regression tests passed');
@@ -185,3 +187,43 @@ print('Display configuration regression tests passed');
     switcher.destroy();
 }
 print('Lid and fresh connector validation tests passed');
+
+{
+    const switcher = makeSwitcher();
+    const pending = deferred();
+    switcher._lidProxy = {call: () => pending.promise};
+    let monitorReads = 0;
+    switcher._proxy = {call: async () => {monitorReads++; return reply(7);}};
+    const refresh = switcher.refresh();
+    switcher.destroy();
+    pending.resolve({recursiveUnpack: () => [{LidIsPresent: true, LidIsClosed: false}]});
+    let cancelled = false;
+    try {await refresh;} catch (error) {cancelled = isCancelled(error);}
+    assert(cancelled && monitorReads === 0, 'Cancelled lid read must not start another D-Bus request');
+}
+{
+    const switcher = makeSwitcher();
+    const pending = deferred();
+    const original = Gio.DBusProxy.new_for_bus;
+    Gio.DBusProxy.new_for_bus = () => pending.promise;
+    try {
+        const init = switcher._initLidProxy();
+        switcher.destroy();
+        pending.resolve({connect() {throw new Error('Late proxy must not acquire handlers');}});
+        let cancelled = false;
+        try {await init;} catch (error) {cancelled = isCancelled(error);}
+        assert(cancelled && switcher._lidProxy === null, 'Late proxy creation must not resurrect a destroyed owner');
+    } finally {
+        Gio.DBusProxy.new_for_bus = original;
+    }
+}
+{
+    const switcher = makeSwitcher();
+    let reads = 0;
+    switcher._proxy = {call: async () => {reads++; return reply(8);}};
+    switcher._debouncedUpdateState();
+    switcher.destroy();
+    await new Promise(resolve => GLib.timeout_add(GLib.PRIORITY_DEFAULT, 550, () => {resolve(); return GLib.SOURCE_REMOVE;}));
+    assert(reads === 0, 'Destroy removes the pending refresh source');
+}
+print('Cancellation and cleanup regression tests passed');
