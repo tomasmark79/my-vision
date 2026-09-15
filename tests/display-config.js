@@ -144,3 +144,44 @@ const deferred = () => {
     assert(switcher._updateStateTimeoutId === null, 'Destroy must not schedule another refresh');
 }
 print('Display configuration regression tests passed');
+
+// Profile validation happens after the fresh read, including lid/topology changes.
+{
+    const switcher = makeSwitcher();
+    const display = {id: ['DP-1', 'Vendor', 'Panel', 'Serial'], displayName: 'Panel', builtin: false,
+        modes: [['1920x1080@75', 1920, 1080, 75, 1, [1], {}]]};
+    switcher.getPhysicalDisplayInfo = () => [display];
+    switcher._lidState = 'open';
+    const profile = {lid: 'any', config: ['', 0, logical('1920x1080@75'), {}, []],
+        displays: [{connector: 'DP-1', name: 'Panel', vendor: 'Vendor', product: 'Panel', serial: 'Serial', builtin: false}]};
+    let applies = 0;
+    switcher._proxy = {call: async method => {
+        if (method === 'ApplyMonitorsConfig') applies++;
+        switcher._lidState = 'closed';
+        return reply(5);
+    }};
+    let rejected = false;
+    try { await switcher.applyProfile(profile); } catch { rejected = true; }
+    assert(rejected && applies === 0, 'Lid changes while reading must cancel even an any-lid profile');
+    switcher.destroy();
+}
+{
+    const switcher = makeSwitcher();
+    const display = {id: ['DP-1', 'Vendor', 'Panel', 'Serial'], displayName: 'Panel', builtin: false,
+        modes: [['1920x1080@75', 1920, 1080, 75, 1, [1], {}]]};
+    switcher.getPhysicalDisplayInfo = () => [display];
+    switcher._lidState = 'closed';
+    const profile = {lid: 'closed', config: ['', 0, logical('1920x1080@75'), {}, []],
+        displays: [{connector: 'DP-1', name: 'Panel', vendor: 'Vendor', product: 'Panel', serial: 'Serial', builtin: false}]};
+    let applied = null;
+    switcher._proxy = {call: async (method, parameters) => {
+        if (method === 'GetCurrentState') display.id[0] = 'DP-9';
+        if (method === 'ApplyMonitorsConfig') applied = parameters.recursiveUnpack();
+        return reply(6);
+    }};
+    await switcher.applyProfile(profile);
+    assert(applied[0] === 6 && applied[2][0][5][0][0] === 'DP-9', 'Remap using refreshed connector names');
+    assert(applied[2][0][5][0][1] === '1920x1080@75', 'Fresh remap retains saved refresh rate');
+    switcher.destroy();
+}
+print('Lid and fresh connector validation tests passed');

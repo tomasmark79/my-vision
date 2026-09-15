@@ -15,6 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -24,6 +25,7 @@ import Gtk from 'gi://Gtk';
 import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 import { PrefsWidgets } from './prefs_widgets.js';
+import {ProfileStore, LID_STATES} from './profiles.js';
 
 const NAME_INDEX = 0;
 const HASH_INDEX = 1;
@@ -45,6 +47,8 @@ export default class MyVisionPreferences extends ExtensionPreferences {
      * @type {Array}
      */
     #configs = [];
+    #store = null;
+    #changedHandler = null;
 
     /**
      * Root widget of the preferences window
@@ -62,6 +66,7 @@ export default class MyVisionPreferences extends ExtensionPreferences {
 
     fillPreferencesWindow(window) {
         this.#settings = this.getSettings();
+        this.#store = new ProfileStore(this.#settings);
         this.#root = window.get_root();
 
         // Register resources
@@ -143,7 +148,7 @@ export default class MyVisionPreferences extends ExtensionPreferences {
         })
 
         // Connect handler for changed configs
-        this.#settings.connect('changed::configs', () => {
+        this.#changedHandler = this.#settings.connect('changed::profiles-v2', () => {
             this.#onConfigsChanged();
         });
 
@@ -152,6 +157,9 @@ export default class MyVisionPreferences extends ExtensionPreferences {
 
         // Handle the close-request signal to drop all references
         window.connect('close-request', () => {
+            this.#settings.disconnect(this.#changedHandler);
+            Gio.resources_unregister(resource);
+            this.#store = null;
             this.#builder = null;
             this.#configs = null;
             this.#root = null;
@@ -162,14 +170,15 @@ export default class MyVisionPreferences extends ExtensionPreferences {
     }
 
     #onConfigsChanged() {
-        this.#configs = this.#settings.get_value('configs').deepUnpack();
+        this.#store.reload();
+        this.#configs = this.#store.profiles;
 
         this.#updateConfigGroup();
     }
 
     #saveConfigs() {
-        const configsVariant = new GLib.Variant('a(sua(iiduba(ssa{sv}))a{sv}a(ss))', this.#configs);
-        this.#settings.set_value('configs', configsVariant);
+        this.#store.profiles = this.#configs;
+        this.#store.save();
     }
 
     #prettyPrintConfig(config) {
@@ -233,7 +242,8 @@ export default class MyVisionPreferences extends ExtensionPreferences {
             configListBox.remove(row);
         }
 
-        for (const [index, config] of this.#configs.entries()) {
+        for (const [index, profile] of this.#configs.entries()) {
+            const config = profile.config;
             const row = PrefsWidgets.createConfigRow({});
 
             row.text = config[NAME_INDEX];
@@ -241,8 +251,30 @@ export default class MyVisionPreferences extends ExtensionPreferences {
             row.tooltip_text = row.title;
             row.infoLabel.label = this.#prettyPrintConfig(config);
 
-            row.connect('apply', () => { this.#onEditApply(index); });
-            row.connect('remove-clicked', () => { this.#onRemoveClicked(index); });
+            const lid = new Gtk.DropDown({
+                model: Gtk.StringList.new([_('Any lid state'), _('Lid open'), _('Lid closed')]),
+                selected: LID_STATES.indexOf(profile.lid),
+                valign: Gtk.Align.CENTER,
+                tooltip_text: _('When this profile is available'),
+            });
+            row.add_suffix(lid);
+            lid.connect('notify::selected', () => {
+                const selected = LID_STATES[lid.selected];
+                if (selected === profile.lid)
+                    return;
+                if (!this.#store.setLid(profile.id, selected)) {
+                    lid.selected = LID_STATES.indexOf(profile.lid);
+                    windowToast(this.#root, _('An identical profile already exists for that lid state.'));
+                }
+            });
+            row.connect('apply', () => {
+                const current = this.#store.profiles.find(p => p.id === profile.id);
+                if (current && row.text.trim()) {
+                    current.config[NAME_INDEX] = row.text.trim();
+                    this.#store.save();
+                }
+            });
+            row.connect('remove-clicked', () => this.#store.remove(profile.id));
 
             row.setupDragAndDrop(configListBox, index);
 
@@ -268,14 +300,8 @@ export default class MyVisionPreferences extends ExtensionPreferences {
         return _('Displays: ') + res.join(', ');
     }
 
-    #onEditApply(index) {
-        const configListBox = this.#builder.get_object('configListbox');
-        this.#configs[index][NAME_INDEX] = configListBox.get_row_at_index(index).get_text();
-        this.#saveConfigs();
-    }
+}
 
-    #onRemoveClicked(index) {
-        this.#configs.splice(index, 1);
-        this.#saveConfigs();
-    }
+function windowToast(window, title) {
+    window.add_toast(new Adw.Toast({title}));
 }

@@ -65,57 +65,26 @@ export function comparePhysicalDisplays(display1, display2) {
  * Returns true if configs represent the same physical setup (ignoring connector names)
  */
 export function compareConfigsByPhysicalProperties(config1, config2) {
-    const physicalDisplays1 = config1[ConfigIndex.PHYSICAL_DISPLAYS];
-    const physicalDisplays2 = config2[ConfigIndex.PHYSICAL_DISPLAYS];
-    
-    // Must have same number of displays
-    if (physicalDisplays1.length !== physicalDisplays2.length) {
+    const a = config1[ConfigIndex.PHYSICAL_DISPLAYS];
+    const b = config2[ConfigIndex.PHYSICAL_DISPLAYS];
+    if (a.length !== b.length)
         return false;
-    }
-    
-    // Check if all displays in config1 match displays in config2 (order-independent)
-    const allDisplaysMatch = physicalDisplays1.every(display1 =>
-        physicalDisplays2.some(display2 => comparePhysicalDisplays(display1, display2))
-    );
-    
-    if (!allDisplaysMatch) {
-        return false;
-    }
-    
-    // Compare logical monitor properties (position, scale, rotation, primary)
-    const logicalMonitors1 = config1[ConfigIndex.LOGICAL_MONITORS];
-    const logicalMonitors2 = config2[ConfigIndex.LOGICAL_MONITORS];
-    
-    if (logicalMonitors1.length !== logicalMonitors2.length) {
-        return false;
-    }
-    
-    // Create sorted copies for comparison (by position)
-    const sorted1 = [...logicalMonitors1].sort((a, b) => {
-        if (a[0] !== b[0]) return a[0] - b[0]; // x
-        return a[1] - b[1]; // y
-    });
-    const sorted2 = [...logicalMonitors2].sort((a, b) => {
-        if (a[0] !== b[0]) return a[0] - b[0]; // x
-        return a[1] - b[1]; // y
-    });
-    
-    // Compare each logical monitor (x, y, scale, transform, primary)
-    for (let i = 0; i < sorted1.length; i++) {
-        const lm1 = sorted1[i];
-        const lm2 = sorted2[i];
-        
-        // Compare: x, y, scale, transform, primary
-        if (lm1[0] !== lm2[0] || // x
-            lm1[1] !== lm2[1] || // y
-            lm1[2] !== lm2[2] || // scale
-            lm1[3] !== lm2[3] || // transform
-            lm1[4] !== lm2[4]) { // primary
+    const mapping = new Map();
+    const used = new Set();
+    for (const display of a) {
+        const matches = b.filter(candidate => comparePhysicalDisplays(display, candidate));
+        if (matches.length !== 1 || used.has(matches[0][0]))
             return false;
-        }
+        mapping.set(display[0], matches[0][0]);
+        used.add(matches[0][0]);
     }
-    
-    return true;
+    const logical = config1[ConfigIndex.LOGICAL_MONITORS].map(m => [...m.slice(0, 5),
+        m[5].map(([connector, mode, props]) => [mapping.get(connector), mode, props])]);
+    // Equality is symmetric; a missing property is not an explicit saved value.
+    const remapped = [...config1];
+    remapped[ConfigIndex.LOGICAL_MONITORS] = logical;
+    return matchesMonitorsConfig(logical, config1[ConfigIndex.PROPERTIES], config2) &&
+        matchesMonitorsConfig(config2[ConfigIndex.LOGICAL_MONITORS], config2[ConfigIndex.PROPERTIES], remapped);
 }
 
 // Compare the effective request, independently of array/dictionary ordering and

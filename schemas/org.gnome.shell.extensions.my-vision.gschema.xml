@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="org.gnome.shell.extensions.my-vision" path="/org/gnome/shell/extensions/my-vision/">
+    <key name="profiles-v2" type="s">
+      <default>''</default>
+      <summary>Versioned profiles, lid conditions and selections by hardware context.</summary>
+    </key>
     <key name="configs" type="a(sua(iiduba(ssa{sv}))a{sv}a(ss))">
       <default>[]</default>
       <summary>List of all saved configurations.</summary>

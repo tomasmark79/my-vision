@@ -19,21 +19,45 @@
 
 My Vision allows you to store and quickly switch between multiple display configuration profiles directly from the GNOME system menu. Profiles are bound to specific display devices, eliminating the need for redundant profiles in scenarios where video outputs are detected or ordered unpredictably.
 
-## Notice
+## Profile identity and laptop lids
 
-If you change the language settings in system wide LOCALE, existing profiles may become invalid and you will need to create new ones. Profiles have their own hash fingerprint composed of device descriptions, and different languages generate different hash fingerprints. When you revert LOCALE to its original values, the original profiles will start working again. You may have lot of profiles for lot of LOCALE configurations.
+New profiles remember the lid state in which they were saved. Preferences lets you
+choose **Lid open**, **Lid closed**, or **Any lid state** for each profile. Profiles
+that activate the built-in panel are unavailable with the lid closed. The built-in
+panel is identified by Mutter's `is-builtin` property, not a hard-coded port name.
+
+Duplicate detection compares the lid condition, physical monitor identities,
+active monitor assignments, resolution/refresh/VRR mode, position, scale, rotation,
+primary monitor and all stored properties. Connector renumbering, enumeration
+order and dictionary ordering do not create duplicates. Saving an exact duplicate
+keeps the existing profile and name. Different refresh rates or lid conditions
+remain separate profiles.
+
+Hardware is matched by vendor, product and serial information supplied by Mutter.
+Legacy names are upgraded only when there is one unambiguous match. Identical
+monitors without distinct identification are refused rather than assigned randomly.
+Names from old profiles can still depend on the original desktop language until
+upgraded; newly identified hardware does not.
+
+The versioned `profiles-v2` setting stores stable profile IDs, lid conditions and
+last selections per connected monitor set and lid state. On first use, existing
+profiles are copied with **Any lid state** because their historical lid state is
+unknown. The old `configs` and `last-config-index` keys remain untouched as a backup.
+Renaming/reordering profiles does not change remembered selections. Deleting a
+profile removes references to its ID. Changing a lid condition is refused if it
+would introduce an exact duplicate.
 
 ## Features
 
 - Save and restore display configurations with a single click
 - Keyboard shortcuts support for fast profile switching
-- Profiles are bound to physical display names (not port order)
+- Profiles are bound to physical monitor identities (not port order)
 - Drag & drop reordering of saved configurations
 - Quick access from the GNOME Quick Settings menu
 
 ## Improvements over the original Display Configuration Switcher
 
-- The order of video output connectors does not matter — the target is always identified by the display name
+- Connector order does not matter; monitor assignment must be unambiguous
 - Fixed various bugs from the original version
 - Enhanced preferences UI with drag & drop support
 
@@ -97,22 +121,42 @@ bash build.sh -bil
 
 ## Startup behavior and verification
 
-The last selected profile is restored after GNOME Shell finishes startup and monitor
-change events have been quiet for 500 ms. The extension refreshes Mutter's state
-before applying a profile and skips the request when that layout is already active.
-A different saved layout can still require a visible display mode change.
+The last selection for the current monitor set and lid state is restored after
+GNOME Shell finishes startup, and after the lid state or connected monitor set
+changes. Without a remembered selection, a matching lid-specific profile is
+preferred, followed by a usable legacy/shared profile. Display changes are
+coalesced for 500 ms. Own mode-setting events do not repeatedly restore a profile.
 
-Run the regression checks without changing the running desktop:
+Before applying, the extension refreshes the lid and monitor state, remaps ports
+against that fresh state and verifies the saved mode/scale/color mode. It skips
+ApplyMonitorsConfig when the requested settings already hold. A context change
+supersedes the old request; transient stale-state retries are bounded. Manual
+selections made during an apply are queued, with the latest selection taking priority.
+No missing mode is silently replaced with a lower refresh rate. If no profile is
+usable, the menu asks you to save one; the extension cannot invent your preferences.
+
+Run regression checks without changing the running desktop:
 
 ```bash
+glib-compile-schemas --strict schemas
+GSETTINGS_BACKEND=memory gjs -m tests/profiles.js
 gjs -m tests/display-config.js
-node --test tests/startup.cjs
+node --test tests/startup.cjs tests/restore.cjs
 ```
 
-The tests use a simulated D-Bus transport. To verify the hardware behavior, install
-the updated extension and log out/in with the saved profile already active, then
-repeat with a different saved profile. Also check disabling/re-enabling the
-extension and switching profiles with different resolutions or refresh rates.
+An optional integration check reads the live lid/monitor state and checks legacy
+profiles without applying a configuration or writing settings:
+
+```bash
+gjs -m tests/live-read-only.js
+```
+
+After installing an update, log out and back in so GNOME Shell loads the new
+JavaScript modules and settings schema. Physical checks: save different external
+monitor profiles with the lid open/closed; repeat saving to check deduplication;
+verify 60 Hz and 144 Hz variants remain distinct; open/close the lid, reconnect the
+dock, reorder/rename profiles and confirm the correct selection and refresh rate.
+Also test rapid lid changes and disabling the extension during a switch.
 
 ## Authors and Acknowledgment
 

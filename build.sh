@@ -32,6 +32,7 @@ ZIP_NAME="${EXTENSION_UUID}.shell-extension.zip"
 
 SOURCES="
     config.js
+    profiles.js
     dbus.js
     dialog.js
     extension.js

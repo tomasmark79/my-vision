@@ -91,6 +91,7 @@ class NameDialog extends ModalDialog.ModalDialog {
     }
 
     setName(name) {
+        this._valid = false;
         this._entry.set_text(name);
     }
 

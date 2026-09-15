@@ -19,13 +19,17 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 
-import { ConfigIndex, updateConfigHash, matchesMonitorsConfig } from './config.js'
+import { ConfigIndex, updateConfigHash, matchesMonitorsConfig } from './config.js';
+import {mapDisplays, displayRecord, remapLogical, profileRequest, contextKey} from './profiles.js';
 
 export const DisplayConfigSwitcher = GObject.registerClass(
 class DisplayConfigSwitcher extends GObject.Object {
     constructor(onStateChanged = null, constructProperties = {}) {
         super(constructProperties);
         this._proxy = null;
+        this._lidProxy = null;
+        this._lidHandlers = [];
+        this._lidState = 'unknown';
         this._cancellable = new Gio.Cancellable();
         this._stateRequestId = 0;
         this._currentState = null;
@@ -44,6 +48,12 @@ class DisplayConfigSwitcher extends GObject.Object {
     destroy() {
         this._destroyed = true;
         this._cancellable.cancel();
+        if (this._lidProxy) {
+            for (const handler of this._lidHandlers)
+                this._lidProxy.disconnect(handler);
+            this._lidProxy = null;
+        }
+        this._lidHandlers = [];
         this._onStateChangedCallback = null;
         this._stateRequestId++;
         if (this._proxy !== null && this._monitorsChangedHandler !== null) {
@@ -82,7 +92,61 @@ class DisplayConfigSwitcher extends GObject.Object {
                 this._debouncedUpdateState();
             });
 
+        await this._initLidProxy();
         this._debouncedUpdateState();
+    }
+
+    async _initLidProxy() {
+        try {
+            const proxy = await Gio.DBusProxy.new_for_bus(
+                Gio.BusType.SYSTEM, Gio.DBusProxyFlags.NONE, null,
+                'org.freedesktop.UPower', '/org/freedesktop/UPower',
+                'org.freedesktop.UPower', this._cancellable);
+            if (this._destroyed)
+                return;
+            this._lidProxy = proxy;
+            Gio._promisify(proxy, 'call');
+            const update = () => {
+                const present = proxy.get_cached_property('LidIsPresent')?.get_boolean();
+                const closed = proxy.get_cached_property('LidIsClosed')?.get_boolean();
+                this._lidState = !proxy.get_name_owner() || present === undefined || closed === undefined
+                    ? 'unknown' : present ? (closed ? 'closed' : 'open') : 'any';
+                this._debouncedUpdateState();
+            };
+            this._lidHandlers.push(proxy.connect('g-properties-changed', update));
+            this._lidHandlers.push(proxy.connect('notify::g-name-owner', update));
+            update();
+        } catch (error) {
+            if (!this._destroyed)
+                console.warn(`Cannot read laptop lid state: ${error.message}`);
+        }
+    }
+
+    getLidState() {
+        if (this._lidState === 'unknown' && this._currentState &&
+            !this.getPhysicalDisplayInfo().some(d => d.builtin))
+            return 'any';
+        return this._lidState;
+    }
+
+    async refresh() {
+        if (this._lidProxy) {
+            try {
+                const reply = await this._lidProxy.call('org.freedesktop.DBus.Properties.GetAll',
+                    new GLib.Variant('(s)', ['org.freedesktop.UPower']),
+                    Gio.DBusCallFlags.NONE, -1, this._cancellable);
+                const [props] = reply.recursiveUnpack();
+                if (!this._destroyed)
+                    this._lidState = props.LidIsPresent === false ? 'any' :
+                        props.LidIsPresent === true && typeof props.LidIsClosed === 'boolean'
+                            ? (props.LidIsClosed ? 'closed' : 'open') : 'unknown';
+            } catch (error) {
+                this._lidState = 'unknown';
+                if (this._destroyed)
+                    throw error;
+            }
+        }
+        return this._updateState(false);
     }
 
     _debouncedUpdateState() {
@@ -146,108 +210,35 @@ class DisplayConfigSwitcher extends GObject.Object {
     // Remaps connector names in a saved configuration to current connectors
     // based on physical display properties (vendor, product, serial)
     remapConnectorsInConfig(savedLogicalMonitors, savedPhysicalDisplays) {
-        if (this._currentState === null) {
-            return savedLogicalMonitors;
-        }
-
-        const currentDisplays = this.getPhysicalDisplayInfo();
-        
-        // Validate for duplicate displayNames (can cause remapping issues)
-        const displayNamesSeen = new Set();
-        for (let display of currentDisplays) {
-            if (display.displayName && displayNamesSeen.has(display.displayName)) {
-                console.warn(`WARNING: Duplicate displayName detected: "${display.displayName}" - connector remapping may be unreliable!`);
-            }
-            displayNamesSeen.add(display.displayName);
-        }
-        
-        // Build mapping from old connector names to new connector names
-        const connectorMap = {};
-        
-        for (let savedDisplay of savedPhysicalDisplays) {
-            // Support both old format [connector, vendor, product, serial] and new format [connector, displayName]
-            const savedConnector = savedDisplay[0];
-            const savedDisplayName = savedDisplay.length === 2 ? savedDisplay[1] : 
-                                   (savedDisplay[1] || savedDisplay[2] || savedDisplay[3] || "");
-            
-            // If displayName is empty (legacy format), skip physical matching
-            // and just use the connector as-is
-            if (!savedDisplayName) {
-                // console.log(`Legacy config detected for ${savedConnector}, skipping physical matching`);
-                connectorMap[savedConnector] = savedConnector;
-                continue;
-            }
-            
-            // Find matching current display by displayName
-            const matchingDisplay = currentDisplays.find(currentDisplay => 
-                currentDisplay.displayName === savedDisplayName
-            );
-            
-            if (matchingDisplay) {
-                console.log(`Mapped ${savedConnector} ("${savedDisplayName}") -> ${matchingDisplay.id[0]}`);
-                connectorMap[savedConnector] = matchingDisplay.id[0];
-            } else {
-                console.warn(`No matching display found for ${savedConnector} ("${savedDisplayName}")`);
-                connectorMap[savedConnector] = savedConnector;
-            }
-        }
-        
-        // Apply the mapping to logical monitors
-        const remappedLogicalMonitors = [];
-        
-        for (let logicalMonitor of savedLogicalMonitors) {
-            const [x, y, scale, transform, primary, monitors] = logicalMonitor;
-            const remappedMonitors = [];
-            
-            for (let monitor of monitors) {
-                const [connector, modeId, props] = monitor;
-                const newConnector = connectorMap[connector] || connector;
-                
-                // Find the current display to get valid mode_id and merge props
-                const currentDisplay = currentDisplays.find(d => d.id[0] === newConnector);
-                
-                if (currentDisplay) {
-                    // Use saved props but merge with current props for any missing values
-                    const mergedProps = { ...currentDisplay.props };
-                    
-                    // Override with saved props if they exist
-                    if (props) {
-                        for (let key in props) {
-                            mergedProps[key] = props[key];
-                        }
-                    }
-                    
-                    // Connector changes must not replace the saved resolution/refresh rate.
-                    const validModeId = modeId;
-                    
-                    // console.log(`Remapping ${connector} -> ${newConnector}, mode_id: ${modeId} (${typeof modeId}) -> ${validModeId} (${typeof validModeId})`);
-                    
-                    remappedMonitors.push([newConnector, validModeId, mergedProps]);
-                } else {
-                    // Display not currently active, use saved configuration as-is
-                    // console.log(`Display ${newConnector} not currently active, using saved config: mode_id=${modeId}`);
-                    remappedMonitors.push([newConnector, modeId, props]);
-                }
-            }
-            
-            remappedLogicalMonitors.push([x, y, scale, transform, primary, remappedMonitors]);
-        }
-        
-        return remappedLogicalMonitors;
+        const saved = savedPhysicalDisplays.map(([connector, name]) => ({connector, name}));
+        return remapLogical(savedLogicalMonitors,
+            mapDisplays(saved, this.getPhysicalDisplayInfo().map(displayRecord)));
     }
 
-    async applyMonitorsConfig(logicalMonitors, properties, usePrompt = false) {
+    async applyProfile(profile) {
+        return this.applyMonitorsConfig(profile.config[2], profile.config[3], false, profile);
+    }
+
+    async applyMonitorsConfig(logicalMonitors, properties, usePrompt = false, profile = null) {
         if (this._destroyed || this._proxy === null || this._currentState === null)
             throw new Error('Display configuration is not ready');
         if (this._isApplyingConfig)
             return;
 
+        const expectedContext = profile ? contextKey(this.getPhysicalDisplayInfo().map(displayRecord), this.getLidState()) : null;
         this._isApplyingConfig = true;
         try {
             // Refresh the serial and check the actual layout before sending a modeset.
             // Do not publish this intermediate read to the menu.
-            if (!await this._updateState(false))
-                throw new Error('Displays changed while preparing the configuration; try again');
+            if (!await this.refresh()) {
+                const error = new Error('Displays changed while preparing the configuration; try again');
+                error.code = 'STATE_CHANGED';
+                throw error;
+            }
+            if (profile && expectedContext !== contextKey(this.getPhysicalDisplayInfo().map(displayRecord), this.getLidState()))
+                throw new Error('The lid or connected monitors changed while preparing the profile');
+            if (profile)
+                logicalMonitors = profileRequest(profile, this.getPhysicalDisplayInfo(), this.getLidState());
             if (matchesMonitorsConfig(logicalMonitors, properties, this.getMonitorsConfig()))
                 return;
 
@@ -303,13 +294,16 @@ class DisplayConfigSwitcher extends GObject.Object {
 
             display.id = id;
             // Store physical properties for robust identification
-            display.vendor = props["vendor"] || "";
-            display.product = props["product"] || "";
-            display.serial = props["serial"] || "";
+            display.vendor = id[1];
+            display.product = id[2];
+            display.serial = id[3];
             display.displayName = props["display-name"] || "";
             
             // console.log(`Display ${id[0]}: vendor="${display.vendor}", product="${display.product}", serial="${display.serial}", displayName="${display.displayName}"`);
             
+            display.builtin = props['is-builtin'] === true;
+            display.modes = modes;
+            display.supportedColorModes = props['supported-color-modes'];
             display.props = {};
 
             const enableUnderscanning = props["is-underscanning"];

@@ -19,436 +19,231 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
-
-import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
-
+import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
-
-import { DisplayConfigSwitcher } from './dbus.js';
-import { NameDialog } from './dialog.js';
-import { ConfigIndex, updateConfigHash, comparePhysicalDisplays, compareConfigsByPhysicalProperties } from './config.js'
-
-
+import {DisplayConfigSwitcher} from './dbus.js';
+import {NameDialog} from './dialog.js';
+import {ProfileStore, activeProfile, contextKey, displayRecord, profileLabel, profileRequest, selectProfile} from './profiles.js';
 
 const DisplayConfigQuickMenuToggle = GObject.registerClass(
     class DisplayConfigQuickMenuToggle extends QuickSettings.QuickMenuToggle {
-
         _init(extension) {
-            // Set QuickMenu name and icon
-            super._init({
-                title: 'Displays',
-                iconName: 'video-display-symbolic',
-                toggleMode: false,
-            });
-
+            super._init({title: 'Displays', iconName: 'video-display-symbolic', toggleMode: false});
             this.menu.setHeader('video-display-symbolic', 'Display Configuration');
-
-            this._destroyed = false;
             this._extension = extension;
-            this._settings = this._extension.getSettings();
-            this._lastConfigIndex = this._settings.get_uint('last-config-index');
-            this._lastConfigLoaded = false;
-            this._configsChangedHandler = this._settings.connect('changed::configs', () => {
-                this._onConfigsChanged();
-            });
-            this._shortcutsEnabledHandler = null;
-
-            this._displayConfigSwitcher = new DisplayConfigSwitcher(() => {
-                this._updateMenu();
-                this._loadDefaultIfNeeded();
-            });
+            this._settings = extension.getSettings();
+            this._store = new ProfileStore(this._settings);
+            this._destroyed = false;
+            this._isApplyingConfig = false;
+            this._context = null;
+            this._handledContext = false;
+            this._retryCount = 0;
+            this._pendingProfile = null;
+            this._currentConfigs = [];
+            this._activeConfig = null;
             this._nameDialog = new NameDialog();
             this._dialogHandlerId = null;
-            this._configs = [];
-            this._currentConfigs = [];
-            this._isApplyingConfig = false;  // Mutex to prevent concurrent config applications
-            this._isSaving = false;  // Flag to prevent recursion in _saveConfigs
-
-            this.connect('clicked', () => this._onClicked());
-
-            this._onConfigsChanged();
-
-            this._shortcutsEnabledHandler = this._settings.connect('changed::display-configuration-switcher-shortcuts-enabled', () => {
-                this._updateKeyBindings();
+            this._displayConfigSwitcher = new DisplayConfigSwitcher(() => this._onStateChanged());
+            this._configsChangedHandler = this._settings.connect('changed::profiles-v2', () => {
+                this._store.reload();
+                this._updateMenu();
             });
-
+            this._shortcutsEnabledHandler = this._settings.connect('changed::display-configuration-switcher-shortcuts-enabled', () => this._updateKeyBindings());
+            this.connect('clicked', () => this._cycleConfig(true));
             this._updateKeyBindings();
         }
 
         _updateKeyBindings() {
-            if (this._settings.get_boolean('display-configuration-switcher-shortcuts-enabled')) {
-                this._addKeyBinding('display-configuration-switcher-shortcut-next', async () => {
-                    await this._cycleConfig(true);
-                });
-                this._addKeyBinding('display-configuration-switcher-shortcut-previous', async () => {
-                    await this._cycleConfig(false);
-                });
-            } else {
-                Main.wm.removeKeybinding('display-configuration-switcher-shortcut-next');
-                Main.wm.removeKeybinding('display-configuration-switcher-shortcut-previous');
+            for (const [key, forward] of [['display-configuration-switcher-shortcut-next', true], ['display-configuration-switcher-shortcut-previous', false]]) {
+                Main.wm.removeKeybinding(key);
+                if (this._settings.get_boolean('display-configuration-switcher-shortcuts-enabled'))
+                    Main.wm.addKeybinding(key, this._settings, Meta.KeyBindingFlags.NONE,
+                        Shell.ActionMode.NORMAL, () => this._cycleConfig(forward));
             }
         }
 
-        _addKeyBinding(key, handler) {
-            Main.wm.addKeybinding(
-                key,
-                this._settings,
-                Meta.KeyBindingFlags.NONE,
-                Shell.ActionMode.NORMAL,
-                handler
-            );
+        _getContext() {
+            const displays = this._displayConfigSwitcher.getPhysicalDisplayInfo();
+            const lid = this._displayConfigSwitcher.getLidState();
+            return displays === null || lid === 'unknown' ? null : contextKey(displays.map(displayRecord), lid);
         }
 
-        destroy() {
-            this._destroyed = true;
-            // Critical: disconnect all signals and clear timeouts first to prevent callbacks on destroyed objects
-            this._displayConfigSwitcher.destroy();
-            this._displayConfigSwitcher = null;
-
-            if (this._configsChangedHandler) {
-                this._settings.disconnect(this._configsChangedHandler);
-                this._configsChangedHandler = null;
+        _onStateChanged() {
+            if (this._destroyed)
+                return;
+            const key = this._getContext();
+            if (key !== this._context) {
+                this._context = key;
+                this._handledContext = false;
+                this._retryCount = 0;
             }
-
-            if (this._shortcutsEnabledHandler) {
-                this._settings.disconnect(this._shortcutsEnabledHandler);
-                this._shortcutsEnabledHandler = null;
-            }
-
-            // Fix memory leak - disconnect dialog handler if still connected
-            if (this._dialogHandlerId) {
-                this._nameDialog.disconnect(this._dialogHandlerId);
-                this._dialogHandlerId = null;
-            }
-
-            this._nameDialog.destroy();
-
-            Main.wm.removeKeybinding('display-configuration-switcher-shortcut-next');
-            Main.wm.removeKeybinding('display-configuration-switcher-shortcut-previous');
-
-            super.destroy();
-        }
-
-        _onConfigsChanged() {
-            this._configs = this._settings.get_value('configs').deepUnpack();
-            for (let config of this._configs) {
-                updateConfigHash(config)
-            }
-
+            this._store.enrich(this._displayConfigSwitcher.getPhysicalDisplayInfo() ?? []);
             this._updateMenu();
+            if (key === null || this._isApplyingConfig || this._handledContext || this._currentConfigs.length === 0)
+                return;
+            const profile = selectProfile(this._currentConfigs, this._store.last[key],
+                this._store.legacyId, this._displayConfigSwitcher.getLidState(), p => this._isActive(p));
+            this._onConfig(profile, true);
         }
 
-        _addDummyItem(message) {
-            const item = new PopupMenu.PopupMenuItem(message);
-            item.label.get_clutter_text().set_line_wrap(true);
-            this.menu.addMenuItem(item);
+        _isActive(profile) {
+            return activeProfile(profile, this._displayConfigSwitcher.getPhysicalDisplayInfo() ?? [],
+                this._displayConfigSwitcher.getLidState(), this._displayConfigSwitcher.getMonitorsConfig());
         }
 
         _updateMenu() {
-            // log('MY-VISION: _updateMenu called');
+            if (this._destroyed)
+                return;
             this.menu.removeAll();
-
-            this._filterConfigs();
-            if (!this._addConfigItems()) { return; }
-
-            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-            this._addModifyItems();
-        }
-
-        _filterConfigs() {
-            const activeDisplays = this._displayConfigSwitcher.getPhysicalDisplayInfo();
-
-            if (activeDisplays === null) { return; }
-
-            this._currentConfigs = [];
-            for (let config of this._configs) {
-                const displays = config[ConfigIndex.PHYSICAL_DISPLAYS];
-                // Match based on displayName (new format) or vendor/product/serial (old format)
-                // rather than connector name, to handle connector swaps
-                if (displays.every(display =>
-                    activeDisplays.some(activeDisplay => {
-                        const activeDisplayArray = [activeDisplay.id[0], activeDisplay.displayName];
-                        return comparePhysicalDisplays(display, activeDisplayArray);
-                    })
-                )) {
-                    this._currentConfigs.push(config);
-                }
-            };
-        }
-
-        _loadDefaultIfNeeded() {
-            if (this._displayConfigSwitcher.hasState() && !this._lastConfigLoaded && this._currentConfigs.length > 0) {
-                this._lastConfigLoaded = true;
-                const lastConfig = this._configs.length > this._lastConfigIndex ? this._configs[this._lastConfigIndex] : null;
-                if (lastConfig !== null && (this._currentConfigs.indexOf(lastConfig) > -1)) {
-                    this._onConfig(lastConfig).catch(err => {
-                        logError(err, 'Failed to load default monitor configuration');
-                        Main.notify('Display Configuration Error', `Failed to load default configuration: ${err.message}`);
-                    });
-                }
-            }
-        }
-
-        _addConfigItems() {
             this.subtitle = null;
             this.checked = false;
             this._activeConfig = null;
-
-            if (this._configs.length === 0) {
-                this._addDummyItem("No configurations saved for this display setup.");
-                return true;
-            }
-
-            const currentConfig = this._displayConfigSwitcher.getMonitorsConfig();
-
-            if (currentConfig === null) { return true; }
-
-            let currentConfigFound = false;
-
-            for (let config of this._currentConfigs) {
-                const configItem = new PopupMenu.PopupMenuItem(config[ConfigIndex.NAME]);
-
-                configItem.connect('activate', () => {
-                    // console.log(`Clicked on config: ${config[ConfigIndex.NAME]}`);
-                    this._onConfig(config).catch(err => {
-                        logError(err, 'Failed to apply monitor configuration');
-                        Main.notify('Display Configuration Error', `Failed to apply "${config[ConfigIndex.NAME]}": ${err.message}`);
-                    });
-                });
-
-                // console.log(`\n=== Checking config: ${config[ConfigIndex.NAME]} ===`);
-                // console.log(`Saved hash: ${config[ConfigIndex.HASH]}`);
-                // console.log(`Current hash: ${currentConfig[ConfigIndex.HASH]}`);
-
-                // First try hash comparison (fastest)
-                let isMatch = config[ConfigIndex.HASH] === currentConfig[ConfigIndex.HASH];
-
-                // Secondary check to prevent hash collisions: verify physical displays match
-                if (isMatch) {
-                    const physicalMatch = compareConfigsByPhysicalProperties(config, currentConfig);
-                    if (!physicalMatch) {
-                        log('WARNING: Hash collision detected! Hashes match but physical displays differ.');
-                        isMatch = false;
-                    }
-                }
-
-                // console.log(`Direct hash match: ${isMatch}`);
-
-                // If hash doesn't match, try remapped comparison
-                // (handles connector swaps where physical displays are same but connectors changed)
-                if (!isMatch) {
-                    const remappedLogicalMonitors = this._displayConfigSwitcher.remapConnectorsInConfig(
-                        config[ConfigIndex.LOGICAL_MONITORS],
-                        config[ConfigIndex.PHYSICAL_DISPLAYS]
-                    );
-
-                    // Create temporary config with remapped data for hash comparison
-                    const tempConfig = [...config];
-                    tempConfig[ConfigIndex.LOGICAL_MONITORS] = remappedLogicalMonitors;
-                    tempConfig[ConfigIndex.PHYSICAL_DISPLAYS] = this._displayConfigSwitcher.getPhysicalDisplayInfo().map(v => [
-                        v.id[0],
-                        v.displayName
-                    ]);
-                    updateConfigHash(tempConfig);
-
-                    // console.log(`Remapped hash: ${tempConfig[ConfigIndex.HASH]}`);
-
-                    isMatch = tempConfig[ConfigIndex.HASH] === currentConfig[ConfigIndex.HASH];
-                    // console.log(`Remapped hash match: ${isMatch}`);
-                }
-
-                if (isMatch) {
-                    // console.log(`✓ Setting checkmark for: ${config[ConfigIndex.NAME]}`);
-                    configItem.setOrnament(PopupMenu.Ornament.CHECK);
-                    this.subtitle = config[ConfigIndex.NAME];
-                    this.checked = true;
-                    this._activeConfig = config;
-                    this._saveLastConfigIndex(this._configs.indexOf(config));
-                    currentConfigFound = true;
-                }
-
-                this.menu.addMenuItem(configItem);
-            }
-
-            // If no match was found, it could be because of the added color-mode property in GNOME 48
-            if (!currentConfigFound) {
-                // Remove color-mode property from current config
-                for (let logicalMonitor of currentConfig[ConfigIndex.LOGICAL_MONITORS]) {
-                    for (let monitor of logicalMonitor[5]) {
-                        let monitorProps = monitor[2];
-                        if (monitorProps !== undefined) {
-                            delete monitorProps["color-mode"];
-                        }
-                    }
-                }
-                // Calculate hash again
-                updateConfigHash(currentConfig);
-                const oldHash = currentConfig[ConfigIndex.HASH];
-
-                // See if we find a match now
-                for (const [index, config] of this._configs.entries()) {
-                    if (config[ConfigIndex.HASH] === oldHash) {
-                        // If a match is found, save the new version of the config (with color-mode parameter)
-                        const name = this._configs[index][ConfigIndex.NAME];
-                        this._configs[index] = this._displayConfigSwitcher.getMonitorsConfig();
-                        this._configs[index][ConfigIndex.NAME] = name; // Name gets overwritten to "" so put it back
-                        this._saveConfigs(); // TODO maybe fix this recursion (visible when doing upgrade)
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-
-        _addModifyItems() {
-            if (this._activeConfig === null) {
-                const addConfigItem = new PopupMenu.PopupImageMenuItem(_("Add Configuration"), 'list-add-symbolic');
-                addConfigItem.connect('activate', () => {
-                    this._onAddConfig();
-                });
-                this.menu.addMenuItem(addConfigItem);
-            }
-
-            const preferencesItem = new PopupMenu.PopupImageMenuItem(_("Modify Configurations"), 'document-edit-symbolic');
-            preferencesItem.connect('activate', () => {
-                this._extension.openPreferences();
+            const displays = this._displayConfigSwitcher.getPhysicalDisplayInfo() ?? [];
+            const lid = this._displayConfigSwitcher.getLidState();
+            this._currentConfigs = this._store.profiles.filter(profile => {
+                try { profileRequest(profile, displays, lid); return true; } catch { return false; }
             });
-            this.menu.addMenuItem(preferencesItem);
-        }
-
-        _saveConfigs() {
-            // Prevent recursion (can happen during config upgrade)
-            if (this._isSaving) {
-                // console.log('Already saving configs, preventing recursion');
-                return;
-            }
-
-            this._isSaving = true;
-            try {
-                const configsVariant = new GLib.Variant('a(sua(iiduba(ssa{sv}))a{sv}a(ss))', this._configs);
-                this._settings.set_value('configs', configsVariant);
-            } finally {
-                this._isSaving = false;
-            }
-        }
-
-        _saveLastConfigIndex(i) {
-            // Do not replace the startup selection with Mutter's intermediate layout.
-            if (this._lastConfigLoaded)
-                this._settings.set_uint('last-config-index', i);
-        }
-
-        async _onClicked() {
-            await this._cycleConfig(true);
-        }
-        async _cycleConfig(forward) {
-            const nConfigs = this._currentConfigs.length;
-            if (nConfigs === 0) {
-                return;
-            }
-
-            if (this._activeConfig === null) {
-                try {
-                    await this._onConfig(this._currentConfigs[0]);
-                } catch (error) {
-                    logError(error, 'Failed to apply first monitor configuration');
-                    Main.notify('Display Configuration Error', `Failed to apply configuration: ${error.message}`);
+            const active = this._currentConfigs.filter(p => this._isActive(p));
+            this._activeConfig = active.find(p => p.id === this._store.last[this._getContext()]) ??
+                active.find(p => p.lid === lid) ?? active[0] ?? null;
+            for (const profile of this._currentConfigs) {
+                const item = new PopupMenu.PopupMenuItem(profileLabel(profile));
+                item.connect('activate', () => this._onConfig(profile));
+                if (profile === this._activeConfig) {
+                    item.setOrnament(PopupMenu.Ornament.CHECK);
+                    this.subtitle = profile.config[0];
+                    this.checked = true;
                 }
-                return;
+                this.menu.addMenuItem(item);
             }
-
-            const currentIndex = this._currentConfigs.indexOf(this._activeConfig);
-            let newIndex;
-
-            if (forward) {
-                newIndex = currentIndex === (nConfigs - 1) ? 0 : currentIndex + 1;
-            } else {
-                newIndex = currentIndex === 0 ? nConfigs - 1 : currentIndex - 1;
+            if (!this._currentConfigs.length) {
+                const item = new PopupMenu.PopupMenuItem(lid === 'unknown'
+                    ? 'Waiting for laptop lid information…' : 'No profiles available for this setup. Save the current configuration.');
+                item.setSensitive(false);
+                item.label.get_clutter_text().set_line_wrap(true);
+                this.menu.addMenuItem(item);
             }
-
-            try {
-                await this._onConfig(this._currentConfigs[newIndex]);
-            } catch (error) {
-                logError(error, 'Failed to cycle monitor configuration');
-                Main.notify('Display Configuration Error', `Failed to switch configuration: ${error.message}`);
-            }
+            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            // Saving remains available when a legacy/shared profile matches: a
+            // separate lid-specific profile is a valid new configuration.
+            const add = new PopupMenu.PopupImageMenuItem(_('Save Current Configuration'), 'list-add-symbolic');
+            add.setSensitive(this._getContext() !== null && !this._isApplyingConfig);
+            add.connect('activate', () => this._onAddConfig());
+            this.menu.addMenuItem(add);
+            const prefs = new PopupMenu.PopupImageMenuItem(_('Modify Configurations'), 'document-edit-symbolic');
+            prefs.connect('activate', () => this._extension.openPreferences());
+            this.menu.addMenuItem(prefs);
         }
 
-        async _onConfig(config) {
-            // An explicit selection takes precedence over automatic restoration.
-            this._lastConfigLoaded = true;
-            // Mutex: prevent concurrent config applications
+        _cycleConfig(forward) {
+            const count = this._currentConfigs.length;
+            if (!count)
+                return;
+            const index = this._currentConfigs.findIndex(p => p.id === this._activeConfig?.id);
+            this._onConfig(this._currentConfigs[index < 0 ? 0 : (index + (forward ? 1 : -1) + count) % count]);
+        }
+
+        async _onConfig(profile, automatic = false) {
+            if (!profile || this._destroyed)
+                return;
             if (this._isApplyingConfig) {
-                // console.log(`Already applying a config, ignoring request for: ${config[ConfigIndex.NAME]}`);
+                if (!automatic)
+                    this._pendingProfile = {id: profile.id, context: this._getContext()};
                 return;
             }
-
-            // console.log(`_onConfig called for: ${config[ConfigIndex.NAME]}`);
+            const key = this._getContext();
+            if (key === null)
+                return;
+            this._handledContext = true;
             this._isApplyingConfig = true;
-
             try {
-                // Remap connector names to handle connector swaps
-                const remappedLogicalMonitors = this._displayConfigSwitcher.remapConnectorsInConfig(
-                    config[ConfigIndex.LOGICAL_MONITORS],
-                    config[ConfigIndex.PHYSICAL_DISPLAYS]
-                );
-                // console.log(`Remapped config, applying...`);
-                await this._displayConfigSwitcher.applyMonitorsConfig(remappedLogicalMonitors, config[ConfigIndex.PROPERTIES]);
-                // console.log(`Config applied successfully`);
+                await this._displayConfigSwitcher.applyProfile(profile);
+                if (!this._destroyed && this._getContext() === key &&
+                    this._store.profiles.some(p => p.id === profile.id))
+                    this._store.remember(key, profile.id);
             } catch (error) {
-                // Disabling the extension cancels in-flight D-Bus calls normally.
-                if (!this._destroyed)
-                    throw error;
+                if (!this._destroyed) {
+                    // A changed lid/topology supersedes the old request. The next
+                    // state callback will restore the new context exactly once.
+                    if (this._getContext() !== key)
+                        this._handledContext = false;
+                    else if (automatic && error.code === 'STATE_CHANGED' && this._retryCount++ < 2)
+                        this._handledContext = false;
+                    else {
+                        console.warn(`Failed to apply display profile: ${error.message}`);
+                        Main.notify('Display Configuration', `${automatic ? 'Could not restore' : 'Could not apply'} “${profile.config[0]}”: ${error.message}`);
+                    }
+                }
             } finally {
                 this._isApplyingConfig = false;
+                if (!this._destroyed && this._pendingProfile) {
+                    const pending = this._pendingProfile;
+                    this._pendingProfile = null;
+                    if (pending.context === this._getContext())
+                        this._onConfig(this._store.profiles.find(p => p.id === pending.id));
+                }
+                // The switcher publishes a debounced fresh state after Apply.
             }
         }
 
         _onAddConfig() {
-            this._nameDialog.setMessage(_("Enter a name for the current configuration."));
-            this._nameDialog.setName("");
-            this._dialogHandlerId = this._nameDialog.connect('closed', () => {
-                this._onNameDialogClosed();
-            });
+            if (this._dialogHandlerId !== null)
+                return;
+            this._dialogContext = this._getContext();
+            this._nameDialog.setMessage(_('Enter a name for the current configuration.') +
+                `\n${this._displayConfigSwitcher.getLidState() === 'closed' ? 'Lid closed' : this._displayConfigSwitcher.getLidState() === 'open' ? 'Lid open' : 'Any lid state'}`);
+            this._nameDialog.setName('');
+            this._dialogHandlerId = this._nameDialog.connect('closed', () => this._onNameDialogClosed());
             this._nameDialog.open();
         }
 
-        _onNameDialogClosed() {
-            if (this._dialogHandlerId) {
-                this._nameDialog.disconnect(this._dialogHandlerId);
-                this._dialogHandlerId = null;
-            }
-
-            if (!this._nameDialog.isValid()) {
+        async _onNameDialogClosed() {
+            this._nameDialog.disconnect(this._dialogHandlerId);
+            this._dialogHandlerId = null;
+            if (!this._nameDialog.isValid())
                 return;
+            const name = this._nameDialog.getName().trim();
+            const expectedContext = this._dialogContext;
+            try {
+                if (this._isApplyingConfig || !await this._displayConfigSwitcher.refresh())
+                    throw new Error('Displays are changing. Please save the configuration again.');
+                if (this._destroyed)
+                    return;
+                const key = this._getContext();
+                if (key === null || key !== expectedContext)
+                    throw new Error('The lid or connected monitors changed. Please save the configuration again.');
+                this._store.reload();
+                this._store.enrich(this._displayConfigSwitcher.getPhysicalDisplayInfo());
+                const config = this._displayConfigSwitcher.getMonitorsConfig();
+                config[0] = name;
+                const profile = {id: GLib.uuid_string_random(), lid: this._displayConfigSwitcher.getLidState(), config,
+                    displays: this._displayConfigSwitcher.getPhysicalDisplayInfo().map(displayRecord)};
+                profileRequest(profile, this._displayConfigSwitcher.getPhysicalDisplayInfo(), profile.lid);
+                const saved = this._store.add(profile);
+                this._handledContext = true;
+                this._store.remember(key, saved.id);
+                this._updateMenu();
+                if (saved.id !== profile.id)
+                    Main.notify('Display Configuration', `This configuration is already saved as “${saved.config[0]}”.`);
+            } catch (error) {
+                if (!this._destroyed)
+                    Main.notify('Display Configuration', error.message);
             }
+        }
 
-            let currentConfig = this._displayConfigSwitcher.getMonitorsConfig();
-            const newName = this._nameDialog.getName();
-            currentConfig[ConfigIndex.NAME] = newName;
-
-            // Check if a configuration with the same physical properties already exists
-            let existingConfigIndex = -1;
-            for (let i = 0; i < this._configs.length; i++) {
-                if (compareConfigsByPhysicalProperties(this._configs[i], currentConfig)) {
-                    existingConfigIndex = i;
-                    break;
-                }
-            }
-
-            if (existingConfigIndex >= 0) {
-                // Update existing config instead of creating a new one
-                this._configs[existingConfigIndex] = currentConfig;
-            } else {
-                // Add as new config
-                this._configs.push(currentConfig);
-            }
-
-            this._saveConfigs();
-            this._updateMenu();
+        destroy() {
+            this._destroyed = true;
+            this._displayConfigSwitcher.destroy();
+            this._settings.disconnect(this._configsChangedHandler);
+            this._settings.disconnect(this._shortcutsEnabledHandler);
+            if (this._dialogHandlerId !== null)
+                this._nameDialog.disconnect(this._dialogHandlerId);
+            this._nameDialog.destroy();
+            Main.wm.removeKeybinding('display-configuration-switcher-shortcut-next');
+            Main.wm.removeKeybinding('display-configuration-switcher-shortcut-previous');
+            super.destroy();
         }
     });
 
