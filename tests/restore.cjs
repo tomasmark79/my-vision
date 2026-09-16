@@ -3,11 +3,12 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const {test} = require('node:test');
 
-function menuFixture() {
+function menuFixture(version = '50.0') {
     const source = readFileSync(new URL('../extension.js', `file://${__filename}`), 'utf8')
         .replace(/^import .*;?\n/gm, '')
         .replace('export default class MyVisionExtension', 'class MyVisionExtension');
     const notices = [];
+    const osds = [];
     class Cancelled extends Error {}
     const cancellable = {
         cancelled: false,
@@ -18,7 +19,15 @@ function menuFixture() {
     const context = vm.createContext({
         GObject: {registerClass: klass => klass}, QuickSettings: {QuickMenuToggle: class {}},
         isCancelled: error => error instanceof Cancelled,
-        Extension: class {}, Main: {notify: (...args) => notices.push(args)}, console: {warn() {}},
+        Gio: {ThemedIcon: class {constructor(props) {Object.assign(this, props);}}},
+        Config: {PACKAGE_VERSION: version},
+        Extension: class {}, Main: {
+            notify: (...args) => notices.push(args),
+            osdWindowManager: {
+                showAll: (...args) => osds.push(['showAll', ...args]),
+                show: (...args) => osds.push(['show', ...args]),
+            },
+        }, console: {warn() {}},
         selectProfile: (profiles, id) => profiles.find(p => p.id === id) ?? profiles[0],
     });
     vm.runInContext(`${source}\nthis.Menu = DisplayConfigQuickMenuToggle;`, context);
@@ -28,14 +37,14 @@ function menuFixture() {
     const open = {id: 'open', config: ['Open']};
     Object.assign(menu, {
         _cancellable: cancellable, _context: null, _handledContext: false, _retryCount: 0,
-        _isApplyingConfig: false, _pendingProfile: null,
+        _isApplyingConfig: false, _pendingProfile: null, _pendingOsd: null,
         _store: {profiles: [closed, open], last: {}, enrich() {}, remember(key, id) {this.last[key] = id;}},
         _displayConfigSwitcher: {getPhysicalDisplayInfo: () => [], getLidState: () => key, applyProfile: async () => {}},
         _getContext: () => key,
         _updateMenu() {this._currentConfigs = key === 'closed' ? [closed] : [open];},
         _isActive: () => false,
     });
-    return {menu, closed, open, notices, setContext(value) {key = value;}};
+    return {menu, closed, open, notices, osds, setContext(value) {key = value;}};
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {let resolve; const promise = new Promise(r => {resolve = r;}); return {promise, resolve};};
@@ -102,4 +111,63 @@ test('cancellation while saving cannot access released settings or UI', async ()
     pending.resolve(true);
     await save;
     assert.equal(notices.length, 0);
+});
+
+for (const version of ['46.0', '47.0', '48.0', '49.0', '50.0']) {
+    test(`GNOME ${version}: OSD follows confirmed state and uses the matching native API`, async () => {
+        const {menu, closed, osds} = menuFixture(version);
+        menu._context = 'closed';
+        menu._isActive = () => true;
+        await menu._onConfig(closed);
+        assert.equal(osds.length, 0, 'Wait for the refreshed monitor state');
+        menu._onStateChanged();
+        assert.equal(osds.length, 1);
+        const modern = Number.parseInt(version, 10) >= 49;
+        assert.equal(osds[0][0], modern ? 'showAll' : 'show');
+        if (!modern) assert.equal(osds[0][1], -1);
+        assert.equal(osds[0][modern ? 1 : 2].name, 'video-display-symbolic');
+        assert.equal(osds[0][modern ? 2 : 3], 'Closed');
+        assert.equal(osds[0].at(-1), null, 'Profile OSD has no volume/brightness bar');
+        menu._onStateChanged();
+        assert.equal(osds.length, 1, 'Own state events must not repeat OSD');
+    });
+}
+
+test('failed or unconfirmed switches do not announce success', async () => {
+    const {menu, closed, osds} = menuFixture();
+    menu._context = 'closed';
+    menu._displayConfigSwitcher.applyProfile = async () => {throw new Error('Unavailable mode');};
+    await menu._onConfig(closed);
+    menu._onStateChanged();
+    assert.equal(osds.length, 0);
+    menu._displayConfigSwitcher.applyProfile = async () => {};
+    await menu._onConfig(closed);
+    menu._onStateChanged(); // _isActive returns false: fresh layout does not match.
+    assert.equal(osds.length, 0);
+    assert.equal(menu._pendingOsd, null);
+});
+
+test('changed monitor context discards pending OSD', async () => {
+    const {menu, closed, setContext, osds} = menuFixture();
+    menu._context = 'closed';
+    menu._isActive = () => true;
+    await menu._onConfig(closed);
+    setContext('open');
+    menu._showPendingOsd();
+    assert.equal(osds.length, 0);
+    assert.equal(menu._pendingOsd, null);
+});
+
+test('cancellation during switch cannot queue an OSD', async () => {
+    const {menu, closed, osds} = menuFixture();
+    const pending = deferred();
+    menu._displayConfigSwitcher.applyProfile = () => pending.promise;
+    const apply = menu._onConfig(closed);
+    menu._cancellable.cancel();
+    menu._cancellable = null;
+    menu._store = null;
+    pending.resolve();
+    await apply;
+    assert.equal(osds.length, 0);
+    assert.equal(menu._pendingOsd, null);
 });

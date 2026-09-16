@@ -50,6 +50,7 @@ would introduce an exact duplicate.
 ## Features
 
 - Save and restore display configurations with a single click
+- Native GNOME OSD with the profile name on the displays enabled by a confirmed switch
 - Keyboard shortcuts support for fast profile switching
 - Profiles are bound to physical monitor identities (not port order)
 - Drag & drop reordering of saved configurations
