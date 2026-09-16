@@ -26,6 +26,14 @@ choose **Lid open**, **Lid closed**, or **Any lid state** for each profile. Prof
 that activate the built-in panel are unavailable with the lid closed. The built-in
 panel is identified by Mutter's `is-builtin` property, not a hard-coded port name.
 
+Availability requires the exact set of connected physical monitors as well as
+an applicable lid condition. Connected monitors that the profile turns off still
+belong to this set. A BuiltIn-only profile saved without an external monitor is
+therefore separate from one saved with an external monitor attached; only the
+profile for the current set appears in the menu, keyboard cycle, and automatic
+restoration. Another monitor with the same model but a different identity does
+not satisfy the saved context. All saved profiles remain accessible in preferences.
+
 Duplicate detection compares the lid condition, physical monitor identities,
 active monitor assignments, resolution/refresh/VRR mode, position, scale, rotation,
 primary monitor and all stored properties. Connector renumbering, enumeration

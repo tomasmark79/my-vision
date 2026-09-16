@@ -67,6 +67,36 @@ const open = make('open'); const shared = make('any');
 assert(selectProfile([shared, open], null, shared.id, 'open', () => false).id === open.id, 'Specific lid preference beats legacy fallback');
 assert(selectProfile([shared, open], shared.id, null, 'open', () => false).id === shared.id, 'Explicit remembered selection has priority');
 
+// Same active layout, different connected hardware: two valid, exclusive profiles.
+const dockedBuiltin = make('open');
+dockedBuiltin.config[2][0][5][0][0] = 'eDP-1';
+const standaloneBuiltin = clone(dockedBuiltin);
+standaloneBuiltin.displays = standaloneBuiltin.displays.filter(d => d.builtin);
+standaloneBuiltin.config[4] = [['eDP-1', 'Built-in']];
+const builtinOnly = [displays[1]];
+assert(!duplicateProfile(dockedBuiltin, standaloneBuiltin), 'Docked and standalone BuiltIn are distinct profiles');
+assert(profileRequest(standaloneBuiltin, builtinOnly, 'open').length === 1, 'Standalone BuiltIn is available without external hardware');
+throws(() => profileRequest(dockedBuiltin, builtinOnly, 'open'), 'Docked BuiltIn is hidden without its external monitor');
+throws(() => profileRequest(standaloneBuiltin, displays, 'open'), 'Standalone BuiltIn is hidden when an external monitor is attached');
+assert(profileRequest(dockedBuiltin, displays, 'open').length === 1, 'Docked BuiltIn remains available with its external monitor disabled');
+const anotherExternal = [{...displays[0], id: ['DP-1', 'GBT', 'M32U', 'another-serial']}, displays[1]];
+throws(() => profileRequest(dockedBuiltin, anotherExternal, 'open'), 'Equal monitor counts cannot substitute another physical monitor');
+const differentPorts = [displays[1], {...displays[0], id: ['DP-9', ...displays[0].id.slice(1)]}];
+assert(profileRequest(dockedBuiltin, differentPorts, 'open').length === 1, 'Connector renumbering and order do not change availability');
+assert(!activeProfile(standaloneBuiltin, displays, 'open', dockedBuiltin.config), 'Identical active layout cannot bypass the hardware context');
+const candidates = [standaloneBuiltin, dockedBuiltin];
+const availableFor = hardware => candidates.filter(p => {
+    try {profileRequest(p, hardware, 'open'); return true;} catch {return false;}
+});
+assert(availableFor(builtinOnly).length === 1 && availableFor(builtinOnly)[0].id === standaloneBuiltin.id,
+    'Undocked menu and shortcut candidates contain only standalone BuiltIn');
+assert(availableFor(displays).length === 1 && availableFor(displays)[0].id === dockedBuiltin.id,
+    'Docked menu and shortcut candidates contain only docked BuiltIn');
+assert(selectProfile(availableFor(builtinOnly), dockedBuiltin.id, dockedBuiltin.id, 'open', () => true).id === standaloneBuiltin.id,
+    'Remembered and legacy choices cannot restore a profile from another context');
+assert(selectProfile(availableFor(anotherExternal), null, dockedBuiltin.id, 'open', () => true) === null,
+    'No fallback to a profile for different connected hardware');
+
 const source = Gio.SettingsSchemaSource.new_from_directory(GLib.build_filenamev([GLib.get_current_dir(), 'schemas']), Gio.SettingsSchemaSource.get_default(), false);
 const settings = new Gio.Settings({settings_schema: source.lookup('org.gnome.shell.extensions.my-vision', false)});
 if (GLib.getenv('GSETTINGS_BACKEND') !== 'memory') throw new Error('Tests require memory settings backend');
@@ -93,4 +123,8 @@ assert(!reopened.setLid(savedOpen.id, 'closed'), 'Changing scope cannot introduc
 reopened.remove(saved.id);
 assert(!('closed-key' in reopened.last) && reopened.last['open-key'] === savedOpen.id, 'Delete cleans only references to deleted profile');
 assert(settings.get_value('configs').print(true) === legacy, 'Edits preserve original migration backup');
+const firstBuiltin = reopened.add(standaloneBuiltin);
+const secondBuiltin = reopened.add(dockedBuiltin);
+assert(firstBuiltin.id !== secondBuiltin.id, 'Saving both BuiltIn contexts preserves two profiles');
+assert(reopened.add(clone(standaloneBuiltin)).id === firstBuiltin.id, 'Saving the same standalone context still deduplicates');
 print(`${checks} profile regression checks passed`);

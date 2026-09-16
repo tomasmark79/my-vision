@@ -62,6 +62,13 @@ Treat this as an established project requirement, not a stylistic suggestion.
 
 ## Preserve profile behavior
 
+- Profile availability requires an exact one-to-one match of the complete set
+  of connected physical monitors, including monitors disabled by the profile,
+  plus the lid condition. Use this rule for menus, shortcuts, automatic restore,
+  and validation before applying. Do not match only the monitors being enabled.
+- BuiltIn-only profiles saved with and without an external monitor are distinct
+  contexts; preserve both and expose only the matching one. Never fall back to
+  another hardware context when no matching profile exists.
 - Keep the legacy settings intact as migration backups.
 - Preserve stable profile IDs and selections across renames and reordering.
 - Duplicate detection must distinguish lid conditions, active monitor assignments,

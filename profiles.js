@@ -98,6 +98,9 @@ export function profileRequest(profile, displays, lid) {
         throw new Error('Waiting for the laptop lid state');
     if (profile.lid !== 'any' && profile.lid !== lid)
         throw new Error('This profile is saved for a different lid state');
+    // Connected but disabled monitors remain part of the profile's context.
+    if (profile.displays.length !== displays.length)
+        throw new Error('This profile is saved for a different set of connected monitors');
     const logical = remapLogical(profile.config[2], mapDisplays(profile.displays, displays.map(displayRecord)));
     if (logical.length === 0)
         throw new Error('The profile does not enable any monitors');
