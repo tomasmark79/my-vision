@@ -1,25 +1,68 @@
-# My-Vision
+# My Vision
 
-[![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?logo=paypal)](https://paypal.me/TomasMark)
-
-<div align="center">
-    <img style="margin: 0px auto 0px; display: block;" src="./data/icon/my-vision.svg" width="256" height="256"/>
-</div>
-
-**Improved fork of Display Configuration Switcher for GNOME Shell**
-
-## Screenshots
+An improved fork of Display Configuration Switcher for GNOME Shell. Save and
+switch display profiles from Quick Settings, with profiles bound to physical
+monitor identities and laptop lid conditions.
 
 <div align="center">
-    <img style="margin: 0px 10px 0px; display: inline-block;" src="./assets/screen01.png" width="150">
-    <img style="margin: 0px 10px 0px; display: inline-block;" src="./assets/screen02.png" width="250">
+    <img src="./data/icon/my-vision.svg" alt="My Vision" width="256" height="256">
+    <br>
+    <img src="./assets/screen01.png" alt="My Vision Quick Settings" width="150">
+    <img src="./assets/screen02.png" alt="My Vision preferences" width="250">
 </div>
 
-## Description
+## Features
 
-My Vision allows you to store and quickly switch between multiple display configuration profiles directly from the GNOME system menu. Profiles are bound to specific display devices, eliminating the need for redundant profiles in scenarios where video outputs are detected or ordered unpredictably.
+- Save and restore display configurations with a single click
+- Native GNOME OSD with the profile name on the displays enabled by a confirmed switch
+- Keyboard shortcuts support for fast profile switching
+- Profiles are bound to physical monitor identities (not port order)
+- Drag & drop reordering of saved configurations
+- Quick access from the GNOME Quick Settings menu
 
-## Profile identity and laptop lids
+## Requirements
+
+Declared GNOME Shell versions: **46–50**, as listed in `metadata.json`.
+
+Build tools: Bash, Python 3, Node.js (syntax checks), zip, `blueprint-compiler`,
+`glib-compile-schemas`, `glib-compile-resources` and `xmllint`.
+Local installation also requires `gnome-extensions`.
+The project provides a development environment in `shell.nix`:
+
+```bash
+nix-shell shell.nix
+```
+
+## Installation
+
+Install from [GNOME Extensions](https://extensions.gnome.org/extension/9014/my-vision/),
+or build and install from the project directory:
+
+```bash
+./build.sh --install
+```
+
+On Wayland, log out and back in when needed to load new or changed JavaScript,
+then enable the extension:
+
+```bash
+gnome-extensions enable my-vision@digitalspace.name
+```
+
+Installation updates the user copy without enabling the extension or logging you out.
+
+## Usage
+
+1. Open the display profile menu in GNOME Quick Settings.
+2. Save the current display configuration with a custom name.
+3. Switch between saved profiles with a click or a configured keyboard shortcut.
+4. Rename, reorder or remove profiles in Preferences:
+
+```bash
+gnome-extensions prefs my-vision@digitalspace.name
+```
+
+### Profile identity and laptop lids
 
 New profiles remember the lid state in which they were saved. Preferences lets you
 choose **Lid open**, **Lid closed**, or **Any lid state** for each profile. Profiles
@@ -55,80 +98,31 @@ Renaming/reordering profiles does not change remembered selections. Deleting a
 profile removes references to its ID. Changing a lid condition is refused if it
 would introduce an exact duplicate.
 
-## Features
-
-- Save and restore display configurations with a single click
-- Native GNOME OSD with the profile name on the displays enabled by a confirmed switch
-- Keyboard shortcuts support for fast profile switching
-- Profiles are bound to physical monitor identities (not port order)
-- Drag & drop reordering of saved configurations
-- Quick access from the GNOME Quick Settings menu
-
-## Improvements over the original Display Configuration Switcher
-
-- Connector order does not matter; monitor assignment must be unambiguous
-- Fixed various bugs from the original version
-- Enhanced preferences UI with drag & drop support
-
-## Compatibility
-
-| GNOME Shell Version |
-|:-------------------:|
-| 46                  |
-| 47                  |
-| 48                  |
-| 49                  |
-| 50                  |
-
-## Installation
-
-### From GNOME Extensions (Recommended)
-
-The recommended way to install the extension is via GNOME Extensions website:
-
-👉 https://extensions.gnome.org/extension/9014/my-vision/
-
-### Manual Installation
-
-Alternatively, you can clone this repository and build the extension manually.
-
-#### Requirements
-
-- `blueprint-compiler` - for compiling Blueprint UI files
-- `glib-compile-resources` - for compiling GResource files
-- `gnome-extensions` - for packaging and installing
-
-#### Build & Install
-
-To build and install the extension, run:
+## Development
 
 ```bash
-bash build.sh -bi
+./build.sh --check
+./build.sh
 ```
 
-Available build options:
+The output is `dist/my-vision@digitalspace.name.zip`. `-b` and `-r` are build aliases;
+`-i`, `-bi` and `-ri` build the current sources and install them. The script never
+logs out the session automatically.
 
-| Option | Description                            |
-|:------:|----------------------------------------|
-| `-b`   | Build the extension                    |
-| `-i`   | Install the extension                  |
-| `-l`   | Log out GNOME session after install    |
+Blueprint UI files and GResource are compiled in a temporary directory. Only the
+resource bundle, JavaScript modules, metadata and XML schema are packaged;
+Blueprint sources, build scripts and development files stay outside the ZIP.
 
-Example with automatic logout:
+Compare with a separately saved previous distribution archive, if available:
 
 ```bash
-bash build.sh -bil
+./build.sh --compare-zip /path/to/previous-my-vision.zip
 ```
 
-## Usage
+This verifies identical paths and bytes for all packaged files, including metadata
+and the GResource bundle. ZIP timestamps and compression may differ.
 
-1. After installation, enable the extension via GNOME Extensions app or the website
-2. Click on the display icon in Quick Settings panel
-3. Save your current display configuration with a custom name
-4. Switch between saved configurations with a single click
-5. Optionally, set up keyboard shortcuts in extension preferences
-
-## Startup behavior and verification
+### Startup behavior and verification
 
 The last selection for the current monitor set and lid state is restored after
 GNOME Shell finishes startup, and after the lid state or connected monitor set
@@ -168,19 +162,21 @@ verify 60 Hz and 144 Hz variants remain distinct; open/close the lid, reconnect 
 dock, reorder/rename profiles and confirm the correct selection and refresh rate.
 Also test rapid lid changes and disabling the extension during a switch.
 
-## Authors and Acknowledgment
+## Troubleshooting
 
-- **Tomáš Mark** — current maintainer ([GitHub](https://github.com/tomasmark79))
-- **Christophe Van den Abbeele** — original author
+Use the development environment above if Blueprint or GLib build tools are missing.
+After installing changed JavaScript, start a fresh GNOME session.
 
-## Contributing
-
-Contributions are welcome! Feel free to open issues or submit pull requests.
+If a profile is unavailable, check that the connected monitor set and lid state
+match its saved context. Ambiguous monitor identities are deliberately refused.
+Report problems in the [issue tracker](https://github.com/tomasmark79/my-vision/issues)
+with reproduction steps and the GNOME Shell version.
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0**.
+[GPL-3.0-or-later](LICENSE). Copyright © 2024 Tomáš Mark.
 
-Copyright © 2024 Tomáš Mark
+Maintainer: [Tomáš Mark](https://github.com/tomasmark79).
+Original author: **Christophe Van den Abbeele** (Display Configuration Switcher).
 
-See [LICENSE](LICENSE) for details.
+[GitHub](https://github.com/tomasmark79/my-vision) · [Donate via PayPal](https://paypal.me/TomasMark)
