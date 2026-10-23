@@ -35,8 +35,19 @@ nix-shell shell.nix
 
 ## Installation
 
-Install from [GNOME Extensions](https://extensions.gnome.org/extension/9014/my-vision/),
-or build and install from the project directory:
+Install from [GNOME Extensions](https://extensions.gnome.org/extension/9014/my-vision/)
+or [download the latest GitHub build](https://github.com/tomasmark79/my-vision/releases/download/github-build/my-vision%40digitalspace.name.zip).
+The GitHub ZIP is built automatically from `main` and may be newer than the version
+reviewed on GNOME Extensions. Its [release page](https://github.com/tomasmark79/my-vision/releases/tag/github-build)
+lists the source commit, build date, declared Shell compatibility and SHA-256 checksums.
+
+Install the downloaded ZIP:
+
+```bash
+gnome-extensions install --force ~/Downloads/my-vision@digitalspace.name.zip
+```
+
+Or build and install from the project directory:
 
 ```bash
 ./build.sh --install
@@ -104,6 +115,13 @@ would introduce an exact duplicate.
 ./build.sh --check
 ./build.sh
 ```
+
+Each push to `main` runs the profile, display configuration, initialization and
+startup/restore regression checks, then the same build in GitHub Actions.
+After all checks pass, it updates the **Latest GitHub build** release. The rolling
+`github-build` tag follows the published commit; the version in `metadata.json`
+is left unchanged. The workflow uses the built-in GitHub token and needs no
+additional secrets. Live display checks are not run in CI.
 
 The output is `dist/my-vision@digitalspace.name.zip`. `-b` and `-r` are build aliases;
 `-i`, `-bi` and `-ri` build the current sources and install them. The script never
