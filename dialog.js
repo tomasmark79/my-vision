@@ -40,7 +40,7 @@ class NameDialog extends ModalDialog.ModalDialog {
 
     _initContent() {
         const boxLayout = new St.BoxLayout();
-        boxLayout.set_vertical(true);
+        boxLayout.set_orientation(Clutter.Orientation.VERTICAL);
 
         this._message = new St.Label();
         this._entry = new St.Entry();
