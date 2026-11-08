@@ -1,11 +1,11 @@
 // Read-only smoke test. Never calls ApplyMonitorsConfig or writes settings.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import {DisplayConfigSwitcher} from '../dbus.js';
-import {ProfileStore, profileRequest, activeProfile} from '../profiles.js';
+import { DisplayConfigSwitcher } from '../dbus.js';
+import { ProfileStore, profileRequest, activeProfile } from '../profiles.js';
 const source = Gio.SettingsSchemaSource.new_from_directory(GLib.build_filenamev([GLib.get_current_dir(), 'schemas']), Gio.SettingsSchemaSource.get_default(), false);
-const settings = new Gio.Settings({settings_schema: source.lookup('org.gnome.shell.extensions.my-vision', false)});
-const fake = {get_string: () => '', get_value: () => settings.get_value('configs'), get_uint: () => settings.get_uint('last-config-index'), set_string() {}};
+const settings = new Gio.Settings({ settings_schema: source.lookup('org.gnome.shell.extensions.my-vision', false) });
+const fake = { get_string: () => '', get_value: () => settings.get_value('configs'), get_uint: () => settings.get_uint('last-config-index'), set_string() { } };
 const store = new ProfileStore(fake);
 await new Promise((resolve, reject) => {
     const timeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10000, () => {

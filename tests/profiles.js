@@ -1,7 +1,7 @@
 // Run with GSETTINGS_BACKEND=memory gjs -m tests/profiles.js
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import {ProfileStore, CONFIG_TYPE, duplicateProfile, sameConfiguration, mapDisplays, displayRecord, profileRequest, activeProfile, contextKey, selectProfile} from '../profiles.js';
+import { ProfileStore, CONFIG_TYPE, duplicateProfile, sameConfiguration, mapDisplays, displayRecord, profileRequest, activeProfile, contextKey, selectProfile } from '../profiles.js';
 
 let checks = 0;
 function assert(ok, message) { checks++; if (!ok) throw new Error(message); }
@@ -9,12 +9,14 @@ function throws(fn, message) { let failed = false; try { fn(); } catch { failed 
 const u = value => GLib.Variant.new_uint32(value);
 const modes = [['3840x2160@144+vrr', 3840, 2160, 144, 1, [1, 1.5], {}], ['3840x2160@60', 3840, 2160, 60, 1, [1, 1.5], {}]];
 const displays = [
-    {id: ['DP-1', 'GBT', 'M32U', 'serial1'], displayName: 'Monitor', builtin: false, modes, supportedColorModes: [0, 1]},
-    {id: ['eDP-1', 'AUO', 'Panel', 'serial2'], displayName: 'Built-in', builtin: true, modes, supportedColorModes: [0]},
+    { id: ['DP-1', 'GBT', 'M32U', 'serial1'], displayName: 'Monitor', builtin: false, modes, supportedColorModes: [0, 1] },
+    { id: ['eDP-1', 'AUO', 'Panel', 'serial2'], displayName: 'Built-in', builtin: true, modes, supportedColorModes: [0] },
 ];
-const make = (lid = 'closed') => ({id: GLib.uuid_string_random(), lid, displays: displays.map(displayRecord),
-    config: ['External', 0, [[0, 0, 1.5, 0, true, [['DP-1', modes[0][0], {'color-mode': u(0)}]]]], {'layout-mode': u(1)}, displays.map(d => [d.id[0], d.displayName])]});
-const clone = profile => ({...profile, id: GLib.uuid_string_random(), displays: profile.displays.map(d => ({...d})), config: new GLib.Variant(CONFIG_TYPE, profile.config).deepUnpack()});
+const make = (lid = 'closed') => ({
+    id: GLib.uuid_string_random(), lid, displays: displays.map(displayRecord),
+    config: ['External', 0, [[0, 0, 1.5, 0, true, [['DP-1', modes[0][0], { 'color-mode': u(0) }]]]], { 'layout-mode': u(1) }, displays.map(d => [d.id[0], d.displayName])]
+});
+const clone = profile => ({ ...profile, id: GLib.uuid_string_random(), displays: profile.displays.map(d => ({ ...d })), config: new GLib.Variant(CONFIG_TYPE, profile.config).deepUnpack() });
 const original = make();
 assert(duplicateProfile(original, clone(original)), 'Exact duplicate');
 for (const mutate of [
@@ -40,14 +42,14 @@ assert(duplicateProfile(original, swapped), 'Port changes and enumeration order 
 const renamed = clone(original); renamed.displays[0].name = 'Localized monitor name';
 assert(duplicateProfile(original, renamed), 'Hardware identity survives locale changes');
 const reordered = clone(original);
-reordered.config[2][0][5][0][2] = {'underscanning': GLib.Variant.new_boolean(false), 'color-mode': u(0)};
+reordered.config[2][0][5][0][2] = { 'underscanning': GLib.Variant.new_boolean(false), 'color-mode': u(0) };
 const reordered2 = clone(reordered);
-reordered2.config[2][0][5][0][2] = {'color-mode': u(0), 'underscanning': GLib.Variant.new_boolean(false)};
+reordered2.config[2][0][5][0][2] = { 'color-mode': u(0), 'underscanning': GLib.Variant.new_boolean(false) };
 assert(duplicateProfile(reordered, reordered2), 'Dictionary ordering is irrelevant');
-const secondMonitor = {...original.displays[0], connector: 'DP-2', serial: 'different'};
+const secondMonitor = { ...original.displays[0], connector: 'DP-2', serial: 'different' };
 assert(mapDisplays([original.displays[0], secondMonitor], [secondMonitor, original.displays[0]]).size === 2, 'Same model with different serials is unambiguous');
-throws(() => mapDisplays([{connector: 'old', name: 'Monitor'}], [original.displays[0], secondMonitor]), 'Ambiguous legacy names must be refused');
-throws(() => mapDisplays(original.displays, [original.displays[0], {...original.displays[0], connector: 'DP-3'}]), 'Missing/ambiguous hardware must be refused');
+throws(() => mapDisplays([{ connector: 'old', name: 'Monitor' }], [original.displays[0], secondMonitor]), 'Ambiguous legacy names must be refused');
+throws(() => mapDisplays(original.displays, [original.displays[0], { ...original.displays[0], connector: 'DP-3' }]), 'Missing/ambiguous hardware must be refused');
 assert(profileRequest(original, displays, 'closed')[0][5][0][0] === 'DP-1', 'Closed lid allows external-only profile despite attached internal panel');
 const internal = make('any'); internal.config[2][0][5][0][0] = 'eDP-1';
 throws(() => profileRequest(internal, displays, 'closed'), 'Internal panel cannot be activated with lid closed');
@@ -79,14 +81,14 @@ assert(profileRequest(standaloneBuiltin, builtinOnly, 'open').length === 1, 'Sta
 throws(() => profileRequest(dockedBuiltin, builtinOnly, 'open'), 'Docked BuiltIn is hidden without its external monitor');
 throws(() => profileRequest(standaloneBuiltin, displays, 'open'), 'Standalone BuiltIn is hidden when an external monitor is attached');
 assert(profileRequest(dockedBuiltin, displays, 'open').length === 1, 'Docked BuiltIn remains available with its external monitor disabled');
-const anotherExternal = [{...displays[0], id: ['DP-1', 'GBT', 'M32U', 'another-serial']}, displays[1]];
+const anotherExternal = [{ ...displays[0], id: ['DP-1', 'GBT', 'M32U', 'another-serial'] }, displays[1]];
 throws(() => profileRequest(dockedBuiltin, anotherExternal, 'open'), 'Equal monitor counts cannot substitute another physical monitor');
-const differentPorts = [displays[1], {...displays[0], id: ['DP-9', ...displays[0].id.slice(1)]}];
+const differentPorts = [displays[1], { ...displays[0], id: ['DP-9', ...displays[0].id.slice(1)] }];
 assert(profileRequest(dockedBuiltin, differentPorts, 'open').length === 1, 'Connector renumbering and order do not change availability');
 assert(!activeProfile(standaloneBuiltin, displays, 'open', dockedBuiltin.config), 'Identical active layout cannot bypass the hardware context');
 const candidates = [standaloneBuiltin, dockedBuiltin];
 const availableFor = hardware => candidates.filter(p => {
-    try {profileRequest(p, hardware, 'open'); return true;} catch {return false;}
+    try { profileRequest(p, hardware, 'open'); return true; } catch { return false; }
 });
 assert(availableFor(builtinOnly).length === 1 && availableFor(builtinOnly)[0].id === standaloneBuiltin.id,
     'Undocked menu and shortcut candidates contain only standalone BuiltIn');
@@ -98,7 +100,7 @@ assert(selectProfile(availableFor(anotherExternal), null, dockedBuiltin.id, 'ope
     'No fallback to a profile for different connected hardware');
 
 const source = Gio.SettingsSchemaSource.new_from_directory(GLib.build_filenamev([GLib.get_current_dir(), 'schemas']), Gio.SettingsSchemaSource.get_default(), false);
-const settings = new Gio.Settings({settings_schema: source.lookup('org.gnome.shell.extensions.my-vision', false)});
+const settings = new Gio.Settings({ settings_schema: source.lookup('org.gnome.shell.extensions.my-vision', false) });
 if (GLib.getenv('GSETTINGS_BACKEND') !== 'memory') throw new Error('Tests require memory settings backend');
 settings.set_value('configs', new GLib.Variant('a' + CONFIG_TYPE, [original.config, open.config]));
 settings.set_uint('last-config-index', 1);

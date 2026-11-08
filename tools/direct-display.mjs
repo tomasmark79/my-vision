@@ -17,7 +17,7 @@ function state() {
 }
 
 function properties(values) {
-    const types = {'layout-mode': 'u', 'color-mode': 'u', underscanning: 'b'};
+    const types = { 'layout-mode': 'u', 'color-mode': 'u', underscanning: 'b' };
     return Object.fromEntries(Object.entries(values).map(([key, value]) => {
         if (!(key in types))
             throw new Error(`Unsupported diagnostic property: ${key}`);
@@ -65,7 +65,7 @@ function assertExtensionState(allowActive) {
     // Shell ExtensionState: ENABLED=1, DISABLED=2. Refuse unknown/transitional states.
     if (info.state !== 2 && !(allowActive && info.state === 1))
         throw new Error(`My Vision must be disabled for an isolated test (state ${info.state})`);
-    print(JSON.stringify({extensionState: info.state, isolated: info.state === 2}));
+    print(JSON.stringify({ extensionState: info.state, isolated: info.state === 2 }));
 }
 
 function main() {
@@ -83,15 +83,17 @@ function main() {
     const logical = prepare(profile, current);
     const method = action === '--verify' ? 0 : 1;
     const parameters = new GLib.Variant(signature, [current[0], method, logical, properties(profile.properties)]);
-    print(JSON.stringify({time: new Date().toISOString(), target, action,
-        before: current[2], parameters: parameters.print(true)}));
+    print(JSON.stringify({
+        time: new Date().toISOString(), target, action,
+        before: current[2], parameters: parameters.print(true)
+    }));
     if (action === '--preview') {
         print('Preview only; no ApplyMonitorsConfig call sent.');
         return;
     }
     assertExtensionState(comparison === '--allow-active-extension');
     call(Gio.DBus.session, destination, objectPath, destination, 'ApplyMonitorsConfig', parameters);
-    print(JSON.stringify({time: new Date().toISOString(), target, reply: 'accepted', logical: state()[2]}));
+    print(JSON.stringify({ time: new Date().toISOString(), target, reply: 'accepted', logical: state()[2] }));
     print(action === '--verify' ? 'Mutter accepted validation; no display change requested.' :
         'One temporary change requested. Physical output requires confirmation; no further switches scheduled.');
 }

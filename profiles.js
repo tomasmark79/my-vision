@@ -16,7 +16,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import GLib from 'gi://GLib';
-import {ConfigIndex, matchesMonitorsConfig} from './config.js';
+import { ConfigIndex, matchesMonitorsConfig } from './config.js';
 
 export const CONFIG_TYPE = '(sua(iiduba(ssa{sv}))a{sv}a(ss))';
 export const LID_STATES = ['any', 'open', 'closed'];
@@ -33,9 +33,11 @@ const stable = value => JSON.stringify(unpack(value));
 const sorted = values => [...values].sort((a, b) => stable(a).localeCompare(stable(b)));
 
 export function displayRecord(display) {
-    return {connector: display.id[0], name: display.displayName,
+    return {
+        connector: display.id[0], name: display.displayName,
         vendor: display.id[1] || '', product: display.id[2] || '', serial: display.id[3] || '',
-        builtin: display.builtin === true};
+        builtin: display.builtin === true
+    };
 }
 export function displayIdentity(display) {
     if (display.builtin)
@@ -66,7 +68,7 @@ export function remapLogical(logical, mapping) {
     return logical.map(m => [...m.slice(0, 5), m[5].map(([connector, mode, props]) => {
         if (!mapping.has(connector))
             throw new Error(`Unknown monitor ${connector}`);
-        return [mapping.get(connector), mode, {...props}];
+        return [mapping.get(connector), mode, { ...props }];
     })]);
 }
 function canonicalLogical(logical) {
@@ -90,7 +92,7 @@ export function contextKey(displays, lid) {
     return stable([lid, sorted(displays.map(displayIdentity))]);
 }
 export function profileLabel(profile) {
-    const label = {any: 'any lid state', open: 'lid open', closed: 'lid closed'}[profile.lid];
+    const label = { any: 'any lid state', open: 'lid open', closed: 'lid closed' }[profile.lid];
     return `${profile.config[0]} · ${label}`;
 }
 export function profileRequest(profile, displays, lid) {
@@ -148,7 +150,7 @@ export class ProfileStore {
             this.profiles = data.profiles.map(p => {
                 if (!p.id || !LID_STATES.includes(p.lid) || !Array.isArray(p.displays))
                     throw new Error('Invalid My Vision profile');
-                return {...p, config: GLib.Variant.parse(new GLib.VariantType(CONFIG_TYPE), p.config, null, null).deepUnpack()};
+                return { ...p, config: GLib.Variant.parse(new GLib.VariantType(CONFIG_TYPE), p.config, null, null).deepUnpack() };
             });
             this.last = data.last ?? {};
             this.legacyId = data.legacyId ?? null;
@@ -157,7 +159,7 @@ export class ProfileStore {
             this.profiles = this.settings.get_value('configs').deepUnpack().map(config => ({
                 id: GLib.uuid_string_random(), lid: 'any', config,
                 displays: config[ConfigIndex.PHYSICAL_DISPLAYS].map(([connector, name]) =>
-                    ({connector, name, vendor: '', product: '', serial: '', builtin: false})),
+                    ({ connector, name, vendor: '', product: '', serial: '', builtin: false })),
             }));
             this.last = {};
             this.legacyId = this.profiles[this.settings.get_uint('last-config-index')]?.id ?? null;
@@ -165,8 +167,8 @@ export class ProfileStore {
         }
     }
     save() {
-        const profiles = this.profiles.map(p => ({...p, config: new GLib.Variant(CONFIG_TYPE, p.config).print(true)}));
-        this.settings.set_string('profiles-v2', JSON.stringify({version: 2, profiles, last: this.last, legacyId: this.legacyId}));
+        const profiles = this.profiles.map(p => ({ ...p, config: new GLib.Variant(CONFIG_TYPE, p.config).print(true) }));
+        this.settings.set_string('profiles-v2', JSON.stringify({ version: 2, profiles, last: this.last, legacyId: this.legacyId }));
     }
     enrich(displays) {
         const current = displays.map(displayRecord);
@@ -177,7 +179,7 @@ export class ProfileStore {
                     continue;
                 const candidates = current.filter(c => sameDisplay(d, c));
                 if (candidates.length === 1) {
-                    Object.assign(d, {...candidates[0], connector: d.connector});
+                    Object.assign(d, { ...candidates[0], connector: d.connector });
                     changed = true;
                 }
             }
@@ -210,7 +212,7 @@ export class ProfileStore {
         const profile = this.profiles.find(p => p.id === id);
         if (!profile || !LID_STATES.includes(lid))
             return false;
-        if (this.profiles.some(p => p.id !== id && duplicateProfile(p, {...profile, lid})))
+        if (this.profiles.some(p => p.id !== id && duplicateProfile(p, { ...profile, lid })))
             return false;
         profile.lid = lid;
         this.save();

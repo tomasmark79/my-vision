@@ -25,7 +25,7 @@ import Gtk from 'gi://Gtk';
 import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 import { PrefsWidgets } from './prefs_widgets.js';
-import {ProfileStore, LID_STATES} from './profiles.js';
+import { ProfileStore, LID_STATES } from './profiles.js';
 
 const NAME_INDEX = 0;
 const HASH_INDEX = 1;
@@ -303,5 +303,5 @@ export default class MyVisionPreferences extends ExtensionPreferences {
 }
 
 function windowToast(window, title) {
-    window.add_toast(new Adw.Toast({title}));
+    window.add_toast(new Adw.Toast({ title }));
 }

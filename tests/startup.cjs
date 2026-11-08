@@ -1,8 +1,8 @@
 // Run with: node --test tests/startup.cjs
-const {readFileSync} = require('node:fs');
+const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
-const {test} = require('node:test');
+const { test } = require('node:test');
 
 function load(startingUp) {
     const handlers = new Map();
@@ -19,20 +19,20 @@ function load(startingUp) {
         .replace(/^import .*;?\n/gm, '')
         .replace('export default class MyVisionExtension', 'class MyVisionExtension');
     const context = vm.createContext({
-        GObject: {registerClass: klass => klass},
-        QuickSettings: {QuickMenuToggle: class {}},
-        Extension: class {},
-        Main: {layoutManager},
+        GObject: { registerClass: klass => klass },
+        QuickSettings: { QuickMenuToggle: class { } },
+        Extension: class { },
+        Main: { layoutManager },
     });
     vm.runInContext(`${source}\nthis.ExtensionClass = MyVisionExtension;`, context);
     const extension = new context.ExtensionClass();
     let created = 0;
     extension._createIndicator = () => { created++; };
-    return {extension, handlers, count: () => created};
+    return { extension, handlers, count: () => created };
 }
 
 test('initialization waits for startup-complete and only runs once', () => {
-    const {extension, handlers, count} = load(true);
+    const { extension, handlers, count } = load(true);
     extension.enable();
     assert.equal(count(), 0);
     handlers.get(1)();
@@ -41,7 +41,7 @@ test('initialization waits for startup-complete and only runs once', () => {
 });
 
 test('disable during startup disconnects the pending initialization', () => {
-    const {extension, handlers, count} = load(true);
+    const { extension, handlers, count } = load(true);
     extension.enable();
     extension.disable();
     assert.equal(count(), 0);
@@ -49,14 +49,14 @@ test('disable during startup disconnects the pending initialization', () => {
 });
 
 test('enabling in a running session initializes immediately', () => {
-    const {extension, handlers, count} = load(false);
+    const { extension, handlers, count } = load(false);
     extension.enable();
     assert.equal(count(), 1);
     assert.equal(handlers.size, 0);
 });
 
 test('enable after cancelling startup initializes only the new registration', () => {
-    const {extension, handlers, count} = load(true);
+    const { extension, handlers, count } = load(true);
     extension.enable();
     extension.disable();
     extension.enable();
@@ -67,12 +67,12 @@ test('enable after cancelling startup initializes only the new registration', ()
 });
 
 test('repeated enable/disable cycles release indicators and child references', () => {
-    const {extension} = load(false);
+    const { extension } = load(false);
     let childrenDestroyed = 0;
     let indicatorsDestroyed = 0;
     extension._createIndicator = () => {
         extension._indicator = {
-            quickSettingsItems: [{destroy() {childrenDestroyed++;}}],
+            quickSettingsItems: [{ destroy() { childrenDestroyed++; } }],
             destroy() {
                 assert.equal(this.quickSettingsItems.length, 0);
                 indicatorsDestroyed++;

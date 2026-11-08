@@ -1,21 +1,21 @@
 // Run with: gjs -m tests/display-config.js
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import {ConfigIndex, matchesMonitorsConfig} from '../config.js';
-import {DisplayConfigSwitcher, isCancelled} from '../dbus.js';
+import { ConfigIndex, matchesMonitorsConfig } from '../config.js';
+import { DisplayConfigSwitcher, isCancelled } from '../dbus.js';
 
 function assert(condition, message) {
     if (!condition)
         throw new Error(message);
 }
 const logical = (mode = '1920x1080@60', x = 0) =>
-    [[x, 0, 1, 0, true, [['DP-1', mode, {'color-mode': GLib.Variant.new_uint32(0)}]]]];
-const config = [null, 0, logical(), {'layout-mode': GLib.Variant.new_uint32(1)}, [['DP-1', 'Panel']]];
+    [[x, 0, 1, 0, true, [['DP-1', mode, { 'color-mode': GLib.Variant.new_uint32(0) }]]]];
+const config = [null, 0, logical(), { 'layout-mode': GLib.Variant.new_uint32(1) }, [['DP-1', 'Panel']]];
 assert(matchesMonitorsConfig(logical(), {}, config), 'Active configuration should be a no-op');
 assert(!matchesMonitorsConfig(logical('1920x1080@75'), {}, config), 'Refresh rate must be compared');
 assert(!matchesMonitorsConfig(logical('2560x1440@60'), {}, config), 'Resolution must be compared');
 assert(!matchesMonitorsConfig(logical(undefined, 100), {}, config), 'Position must be compared');
-assert(!matchesMonitorsConfig(logical(), {'layout-mode': GLib.Variant.new_uint32(2)}, config), 'Layout mode must be compared');
+assert(!matchesMonitorsConfig(logical(), { 'layout-mode': GLib.Variant.new_uint32(2) }, config), 'Layout mode must be compared');
 const legacy = logical();
 legacy[0][5][0][2] = {};
 assert(matchesMonitorsConfig(legacy, {}, config), 'Missing legacy color-mode must not trigger a modeset');
@@ -23,18 +23,18 @@ const reversed = [null, 0, [...logical(), ...logical(undefined, 1920)], {}, []];
 assert(matchesMonitorsConfig([...reversed[2]].reverse(), {}, reversed), 'Monitor order must not trigger a modeset');
 
 // Exercise the real switcher with a controlled D-Bus transport.
-DisplayConfigSwitcher.prototype._initProxy = async function () {};
+DisplayConfigSwitcher.prototype._initProxy = async function () { };
 const makeSwitcher = () => {
     const switcher = new DisplayConfigSwitcher();
     switcher._currentState = [1];
     switcher.getMonitorsConfig = () => config;
     return switcher;
 };
-const reply = serial => ({recursiveUnpack: () => [serial]});
+const reply = serial => ({ recursiveUnpack: () => [serial] });
 const deferred = () => {
     let resolve;
     const promise = new Promise(r => { resolve = r; });
-    return {promise, resolve};
+    return { promise, resolve };
 };
 const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_LOW, () => {
     resolve();
@@ -45,8 +45,8 @@ const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_L
     const switcher = makeSwitcher();
     let reads = 0;
     let notified = 0;
-    switcher._proxy = {call: async () => {reads++; return reply(2);}};
-    switcher._onStateChangedCallback = () => {notified++;};
+    switcher._proxy = { call: async () => { reads++; return reply(2); } };
+    switcher._onStateChangedCallback = () => { notified++; };
     switcher.requestStateUpdate();
     switcher.requestStateUpdate();
     switcher.requestStateUpdate();
@@ -58,10 +58,12 @@ const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_L
 {
     const switcher = makeSwitcher();
     const calls = [];
-    switcher._proxy = {call: async (method, parameters) => {
-        calls.push([method, parameters]);
-        return reply(42);
-    }};
+    switcher._proxy = {
+        call: async (method, parameters) => {
+            calls.push([method, parameters]);
+            return reply(42);
+        }
+    };
     await switcher.applyMonitorsConfig(logical(), {});
     assert(calls.length === 1 && calls[0][0] === 'GetCurrentState', 'No redundant ApplyMonitorsConfig');
     await switcher.applyMonitorsConfig(logical('1920x1080@75'), {});
@@ -74,7 +76,7 @@ const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_L
     const older = deferred();
     const newer = deferred();
     let calls = 0;
-    switcher._proxy = {call: () => (++calls === 1 ? older.promise : newer.promise)};
+    switcher._proxy = { call: () => (++calls === 1 ? older.promise : newer.promise) };
     const first = switcher._updateState();
     const second = switcher._updateState();
     newer.resolve(reply(3));
@@ -89,7 +91,7 @@ const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_L
     const pending = deferred();
     let notified = false;
     switcher._onStateChangedCallback = () => { notified = true; };
-    switcher._proxy = {call: () => pending.promise};
+    switcher._proxy = { call: () => pending.promise };
     const read = switcher._updateState();
     switcher.destroy();
     pending.resolve(reply(2));
@@ -101,11 +103,13 @@ const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_L
     const switcher = makeSwitcher();
     const pending = deferred();
     let applies = 0;
-    switcher._proxy = {call: method => {
-        if (method === 'ApplyMonitorsConfig')
-            applies++;
-        return pending.promise;
-    }};
+    switcher._proxy = {
+        call: method => {
+            if (method === 'ApplyMonitorsConfig')
+                applies++;
+            return pending.promise;
+        }
+    };
     const apply = switcher.applyMonitorsConfig(logical('1920x1080@75'), {});
     await switcher.applyMonitorsConfig(logical(), {});
     switcher._queueStateUpdate();
@@ -118,7 +122,7 @@ const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_L
 }
 {
     const switcher = makeSwitcher();
-    switcher.getPhysicalDisplayInfo = () => [{id: ['DP-2'], displayName: 'Panel', mode_id: '1920x1080@60', props: {}}];
+    switcher.getPhysicalDisplayInfo = () => [{ id: ['DP-2'], displayName: 'Panel', mode_id: '1920x1080@60', props: {} }];
     const remapped = switcher.remapConnectorsInConfig(logical('1920x1080@75'), config[ConfigIndex.PHYSICAL_DISPLAYS]);
     assert(remapped[0][5][0][0] === 'DP-2', 'Connector must be remapped');
     assert(remapped[0][5][0][1] === '1920x1080@75', 'Saved mode must survive remapping');
@@ -130,16 +134,18 @@ const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_L
     const pending = deferred();
     let notified = 0;
     switcher._onStateChangedCallback = () => { notified++; };
-    switcher._proxy = {call: async method => {
-        if (method === 'ApplyMonitorsConfig') {
-            // Mutter may signal before the method reply arrives.
-            switcher._queueStateUpdate();
-            switcher._queueStateUpdate();
-            started.resolve();
-            await pending.promise;
+    switcher._proxy = {
+        call: async method => {
+            if (method === 'ApplyMonitorsConfig') {
+                // Mutter may signal before the method reply arrives.
+                switcher._queueStateUpdate();
+                switcher._queueStateUpdate();
+                started.resolve();
+                await pending.promise;
+            }
+            return reply(4);
         }
-        return reply(4);
-    }};
+    };
     const apply = switcher.applyMonitorsConfig(logical('1920x1080@75'), {});
     await started.promise;
     await flushMainLoop();
@@ -153,14 +159,16 @@ const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_L
 {
     const switcher = makeSwitcher();
     const started = deferred();
-    switcher._proxy = {call: async method => {
-        if (method === 'GetCurrentState')
-            return reply(4);
-        started.resolve();
-        return new Promise((resolve, reject) => {
-            switcher._cancellable.connect(() => reject(new Error('Cancelled')));
-        });
-    }};
+    switcher._proxy = {
+        call: async method => {
+            if (method === 'GetCurrentState')
+                return reply(4);
+            started.resolve();
+            return new Promise((resolve, reject) => {
+                switcher._cancellable.connect(() => reject(new Error('Cancelled')));
+            });
+        }
+    };
     const apply = switcher.applyMonitorsConfig(logical('1920x1080@75'), {});
     await started.promise;
     switcher.destroy();
@@ -174,18 +182,24 @@ print('Display configuration regression tests passed');
 // Profile validation happens after the fresh read, including lid/topology changes.
 {
     const switcher = makeSwitcher();
-    const display = {id: ['DP-1', 'Vendor', 'Panel', 'Serial'], displayName: 'Panel', builtin: false,
-        modes: [['1920x1080@75', 1920, 1080, 75, 1, [1], {}]]};
+    const display = {
+        id: ['DP-1', 'Vendor', 'Panel', 'Serial'], displayName: 'Panel', builtin: false,
+        modes: [['1920x1080@75', 1920, 1080, 75, 1, [1], {}]]
+    };
     switcher.getPhysicalDisplayInfo = () => [display];
     switcher._lidState = 'open';
-    const profile = {lid: 'any', config: ['', 0, logical('1920x1080@75'), {}, []],
-        displays: [{connector: 'DP-1', name: 'Panel', vendor: 'Vendor', product: 'Panel', serial: 'Serial', builtin: false}]};
+    const profile = {
+        lid: 'any', config: ['', 0, logical('1920x1080@75'), {}, []],
+        displays: [{ connector: 'DP-1', name: 'Panel', vendor: 'Vendor', product: 'Panel', serial: 'Serial', builtin: false }]
+    };
     let applies = 0;
-    switcher._proxy = {call: async method => {
-        if (method === 'ApplyMonitorsConfig') applies++;
-        switcher._lidState = 'closed';
-        return reply(5);
-    }};
+    switcher._proxy = {
+        call: async method => {
+            if (method === 'ApplyMonitorsConfig') applies++;
+            switcher._lidState = 'closed';
+            return reply(5);
+        }
+    };
     let rejected = false;
     try { await switcher.applyProfile(profile); } catch { rejected = true; }
     assert(rejected && applies === 0, 'Lid changes while reading must cancel even an any-lid profile');
@@ -193,18 +207,24 @@ print('Display configuration regression tests passed');
 }
 {
     const switcher = makeSwitcher();
-    const display = {id: ['DP-1', 'Vendor', 'Panel', 'Serial'], displayName: 'Panel', builtin: false,
-        modes: [['1920x1080@75', 1920, 1080, 75, 1, [1], {}]]};
+    const display = {
+        id: ['DP-1', 'Vendor', 'Panel', 'Serial'], displayName: 'Panel', builtin: false,
+        modes: [['1920x1080@75', 1920, 1080, 75, 1, [1], {}]]
+    };
     switcher.getPhysicalDisplayInfo = () => [display];
     switcher._lidState = 'closed';
-    const profile = {lid: 'closed', config: ['', 0, logical('1920x1080@75'), {}, []],
-        displays: [{connector: 'DP-1', name: 'Panel', vendor: 'Vendor', product: 'Panel', serial: 'Serial', builtin: false}]};
+    const profile = {
+        lid: 'closed', config: ['', 0, logical('1920x1080@75'), {}, []],
+        displays: [{ connector: 'DP-1', name: 'Panel', vendor: 'Vendor', product: 'Panel', serial: 'Serial', builtin: false }]
+    };
     let applied = null;
-    switcher._proxy = {call: async (method, parameters) => {
-        if (method === 'GetCurrentState') display.id[0] = 'DP-9';
-        if (method === 'ApplyMonitorsConfig') applied = parameters.recursiveUnpack();
-        return reply(6);
-    }};
+    switcher._proxy = {
+        call: async (method, parameters) => {
+            if (method === 'GetCurrentState') display.id[0] = 'DP-9';
+            if (method === 'ApplyMonitorsConfig') applied = parameters.recursiveUnpack();
+            return reply(6);
+        }
+    };
     await switcher.applyProfile(profile);
     assert(applied[0] === 6 && applied[2][0][5][0][0] === 'DP-9', 'Remap using refreshed connector names');
     assert(applied[2][0][5][0][1] === '1920x1080@75', 'Fresh remap retains saved refresh rate');
@@ -215,14 +235,14 @@ print('Lid and fresh connector validation tests passed');
 {
     const switcher = makeSwitcher();
     const pending = deferred();
-    switcher._lidProxy = {call: () => pending.promise};
+    switcher._lidProxy = { call: () => pending.promise };
     let monitorReads = 0;
-    switcher._proxy = {call: async () => {monitorReads++; return reply(7);}};
+    switcher._proxy = { call: async () => { monitorReads++; return reply(7); } };
     const refresh = switcher.refresh();
     switcher.destroy();
-    pending.resolve({recursiveUnpack: () => [{LidIsPresent: true, LidIsClosed: false}]});
+    pending.resolve({ recursiveUnpack: () => [{ LidIsPresent: true, LidIsClosed: false }] });
     let cancelled = false;
-    try {await refresh;} catch (error) {cancelled = isCancelled(error);}
+    try { await refresh; } catch (error) { cancelled = isCancelled(error); }
     assert(cancelled && monitorReads === 0, 'Cancelled lid read must not start another D-Bus request');
 }
 {
@@ -233,9 +253,9 @@ print('Lid and fresh connector validation tests passed');
     try {
         const init = switcher._initLidProxy();
         switcher.destroy();
-        pending.resolve({connect() {throw new Error('Late proxy must not acquire handlers');}});
+        pending.resolve({ connect() { throw new Error('Late proxy must not acquire handlers'); } });
         let cancelled = false;
-        try {await init;} catch (error) {cancelled = isCancelled(error);}
+        try { await init; } catch (error) { cancelled = isCancelled(error); }
         assert(cancelled && switcher._lidProxy === null, 'Late proxy creation must not resurrect a destroyed owner');
     } finally {
         Gio.DBusProxy.new_for_bus = original;
@@ -244,7 +264,7 @@ print('Lid and fresh connector validation tests passed');
 {
     const switcher = makeSwitcher();
     let reads = 0;
-    switcher._proxy = {call: async () => {reads++; return reply(8);}};
+    switcher._proxy = { call: async () => { reads++; return reply(8); } };
     switcher._queueStateUpdate();
     switcher.destroy();
     await flushMainLoop();

@@ -51,8 +51,8 @@ export function comparePhysicalDisplays(display1, display2) {
     // Old format: [connector, vendor, product, serial]
     if (display1.length === 4 && display2.length === 4) {
         return display1[1] === display2[1] &&  // vendor
-               display1[2] === display2[2] &&  // product
-               display1[3] === display2[3];    // serial
+            display1[2] === display2[2] &&  // product
+            display1[3] === display2[3];    // serial
     }
     // Mixed formats - try displayName from new vs concatenated from old
     const name1 = display1.length === 2 ? display1[1] : (display1[1] || display1[2] || display1[3] || "");
@@ -79,7 +79,7 @@ export function compareConfigsByPhysicalProperties(config1, config2) {
         used.add(matches[0][0]);
     }
     const logical = config1[ConfigIndex.LOGICAL_MONITORS].map(m => [...m.slice(0, 5),
-        m[5].map(([connector, mode, props]) => [mapping.get(connector), mode, props])]);
+    m[5].map(([connector, mode, props]) => [mapping.get(connector), mode, props])]);
     // Equality is symmetric; a missing property is not an explicit saved value.
     const remapped = [...config1];
     remapped[ConfigIndex.LOGICAL_MONITORS] = logical;

@@ -76,7 +76,7 @@ export class PrefsWidgets {
                 super();
                 this.entryRow.text = text;
                 this.entryRow.title = title;
-            }           
+            }
         });
 
         this.#ConfigRow = GObject.registerClass({
@@ -99,37 +99,37 @@ export class PrefsWidgets {
                 });
                 this.add_controller(dragSource);
                 this.add_controller(dropController);
-    
+
                 let dragX;
                 let dragY;
-    
+
                 dragSource.connect("prepare", (_source, x, y) => {
                     dragX = x;
                     dragY = y;
-    
+
                     const value = new GObject.Value();
                     value.init(GObject.TYPE_INT);
                     value.set_int(index);
-    
+
                     return Gdk.ContentProvider.new_for_value(value);
                 });
-    
+
                 dragSource.connect("drag-begin", (_source, drag) => {
                     const dragWidget = PrefsWidgets.createConfigRowDragWidget(this.text, this.title);
-    
+
                     dragWidget.set_size_request(this.get_width(), this.get_height());
                     dragWidget.drag_highlight_row(dragWidget.entryRow);
-    
+
                     const icon = Gtk.DragIcon.get_for_drag(drag);
                     icon.child = dragWidget;
-    
+
                     drag.set_hotspot(dragX, dragY);
                 });
-    
+
                 dropController.connect("enter", () => {
                     list.drag_highlight_row(this);
                 });
-    
+
                 dropController.connect("leave", () => {
                     list.drag_unhighlight_row();
                 });
@@ -164,7 +164,7 @@ export class PrefsWidgets {
                 const event = eventController.get_current_event();
 
                 if (event.is_modifier()) { return false; }
-                
+
                 // Sanitize modifier flags to only include valid Gdk.ModifierType values
                 const validMod = mod & (
                     Gdk.ModifierType.SHIFT_MASK |
@@ -179,27 +179,27 @@ export class PrefsWidgets {
                     const display = Gdk.Display.get_default();
                     const cleanMod = validMod & ~Gdk.ModifierType.CONTROL_MASK;
 
-                    let [ok, newKey, , , ] = display.translate_key(keycode, cleanMod, 0);
+                    let [ok, newKey, , ,] = display.translate_key(keycode, cleanMod, 0);
                     if (ok && newKey >= 0x20) {
                         key = newKey;
                     } else {
-                        [ok, newKey, , , ] = display.translate_key(keycode, cleanMod, 1);
+                        [ok, newKey, , ,] = display.translate_key(keycode, cleanMod, 1);
                         if (ok && newKey >= 0x20) {
                             key = newKey;
                         }
                     }
                 }
-                
+
                 const accelerator = Gtk.accelerator_name(key, validMod);
                 this.set_accelerator(accelerator);
-                
+
                 return true;
             }
 
             set_accelerator(accelerator) {
                 this.#accelerator = accelerator;
                 const [ok, key, mods] = Gtk.accelerator_parse(accelerator);
-                
+
                 // Sanitize modifier flags to only include valid Gdk.ModifierType values
                 const validMods = mods & (
                     Gdk.ModifierType.SHIFT_MASK |
@@ -209,7 +209,7 @@ export class PrefsWidgets {
                     Gdk.ModifierType.HYPER_MASK |
                     Gdk.ModifierType.META_MASK
                 );
-                
+
                 if (ok && key !== 0) {
                     const label = PrefsWidgets.#formatAccelerator(key, validMods);
                     this.shortcutLabel.set_label(label);
@@ -279,7 +279,7 @@ export class PrefsWidgets {
                 this.#accelerator = value;
                 // Format accelerator for display using GTK's built-in function
                 const [ok, key, mods] = Gtk.accelerator_parse(value);
-                
+
                 // Sanitize modifier flags to only include valid Gdk.ModifierType values
                 const validMods = mods & (
                     Gdk.ModifierType.SHIFT_MASK |
@@ -289,7 +289,7 @@ export class PrefsWidgets {
                     Gdk.ModifierType.HYPER_MASK |
                     Gdk.ModifierType.META_MASK
                 );
-                
+
                 if (ok && key !== 0) {
                     const label = PrefsWidgets.#formatAccelerator(key, validMods);
                     this.shortcutLabel.set_label(label);
@@ -298,9 +298,9 @@ export class PrefsWidgets {
                 }
             }
 
-            _onEditButtonClicked() {                
+            _onEditButtonClicked() {
                 const shortcutDialog = PrefsWidgets.getShortcutDialog();
-                
+
                 shortcutDialog.set_accelerator(this.accelerator);
 
                 this.#shortcutDialogResponseHandlerID = shortcutDialog.connect(
@@ -322,7 +322,7 @@ export class PrefsWidgets {
                 shortcutDialog.disconnect(this.#shortcutDialogResponseHandlerID);
                 shortcutDialog.close();
             }
-            
+
             #loadAcceleratorSetting() {
                 const accelerator_setting = this.#settings.get_strv(this.#key);
                 const accelerator = accelerator_setting.length > 0 ? accelerator_setting[0] : '';
@@ -333,7 +333,7 @@ export class PrefsWidgets {
                 const accelerator = this.accelerator;
                 this.#settings.set_strv(
                     this.#key,
-                    [ accelerator ]
+                    [accelerator]
                 );
             }
         });

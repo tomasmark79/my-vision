@@ -20,19 +20,19 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
-import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
+import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
-import {DisplayConfigSwitcher, isCancelled} from './dbus.js';
-import {NameDialog} from './dialog.js';
-import {ProfileStore, activeProfile, contextKey, displayRecord, profileLabel, profileRequest, selectProfile} from './profiles.js';
+import { DisplayConfigSwitcher, isCancelled } from './dbus.js';
+import { NameDialog } from './dialog.js';
+import { ProfileStore, activeProfile, contextKey, displayRecord, profileLabel, profileRequest, selectProfile } from './profiles.js';
 
 const DisplayConfigQuickMenuToggle = GObject.registerClass(
     class DisplayConfigQuickMenuToggle extends QuickSettings.QuickMenuToggle {
         _init(extension) {
-            super._init({title: 'Displays', iconName: 'video-display-symbolic', toggleMode: false});
+            super._init({ title: 'Displays', iconName: 'video-display-symbolic', toggleMode: false });
             this.menu.setHeader('video-display-symbolic', 'Display Configuration');
             this._extension = extension;
             this._settings = extension.getSettings();
@@ -116,7 +116,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 return;
 
             // Use the refreshed topology, after queued selections have been handled.
-            const icon = new Gio.ThemedIcon({name: 'video-display-symbolic'});
+            const icon = new Gio.ThemedIcon({ name: 'video-display-symbolic' });
             // GNOME 49 changed show(); 46–48 use index -1 for all active monitors.
             if (Number.parseInt(Config.PACKAGE_VERSION, 10) >= 49)
                 Main.osdWindowManager.showAll(icon, profile.config[0], null);
@@ -187,7 +187,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 return;
             if (this._isApplyingConfig || this._requestedProfile !== null) {
                 if (!automatic)
-                    this._pendingProfile = {id: profile.id, context: this._getContext()};
+                    this._pendingProfile = { id: profile.id, context: this._getContext() };
                 if (!this._isApplyingConfig)
                     this._displayConfigSwitcher.requestStateUpdate();
                 return;
@@ -197,7 +197,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 return;
             const cancellable = this._cancellable;
             this._pendingOsd = null;
-            this._requestedProfile = {id: profile.id, context: key};
+            this._requestedProfile = { id: profile.id, context: key };
             this._handledContext = true;
             this._isApplyingConfig = true;
             try {
@@ -207,7 +207,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                     this._store.profiles.some(p => p.id === profile.id)) {
                     this._store.remember(key, profile.id);
                     if (this._pendingProfile === null)
-                        this._pendingOsd = {id: profile.id, context: key};
+                        this._pendingOsd = { id: profile.id, context: key };
                 }
             } catch (error) {
                 if (!cancellable.is_cancelled() && !isCancelled(error)) {
@@ -263,8 +263,10 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 this._store.enrich(this._displayConfigSwitcher.getPhysicalDisplayInfo());
                 const config = this._displayConfigSwitcher.getMonitorsConfig();
                 config[0] = name;
-                const profile = {id: GLib.uuid_string_random(), lid: this._displayConfigSwitcher.getLidState(), config,
-                    displays: this._displayConfigSwitcher.getPhysicalDisplayInfo().map(displayRecord)};
+                const profile = {
+                    id: GLib.uuid_string_random(), lid: this._displayConfigSwitcher.getLidState(), config,
+                    displays: this._displayConfigSwitcher.getPhysicalDisplayInfo().map(displayRecord)
+                };
                 profileRequest(profile, this._displayConfigSwitcher.getPhysicalDisplayInfo(), profile.lid);
                 const saved = this._store.add(profile);
                 this._handledContext = true;

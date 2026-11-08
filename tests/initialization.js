@@ -2,13 +2,13 @@
 // Exercise the real initialization methods with controlled asynchronous proxies.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import {DisplayConfigSwitcher, isCancelled} from '../dbus.js';
+import { DisplayConfigSwitcher, isCancelled } from '../dbus.js';
 
-function assert(value, message) {if (!value) throw new Error(message);}
+function assert(value, message) { if (!value) throw new Error(message); }
 const deferred = () => {
     let resolve;
-    const promise = new Promise(r => {resolve = r;});
-    return {promise, resolve};
+    const promise = new Promise(r => { resolve = r; });
+    return { promise, resolve };
 };
 const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_LOW, () => {
     resolve(); return GLib.SOURCE_REMOVE;
@@ -18,22 +18,22 @@ function proxy(lid = false) {
     const calls = [];
     return {
         handlers, calls,
-        connect(signal, callback) {const id = handlers.size + 1; handlers.set(id, [signal, callback]); return id;},
-        disconnect(id) {assert(handlers.delete(id), 'Disconnect must match an owned signal');},
-        get_cached_property(name) {return new GLib.Variant('b', name === 'LidIsPresent' || lid);},
-        get_name_owner() {return ':1.100';},
+        connect(signal, callback) { const id = handlers.size + 1; handlers.set(id, [signal, callback]); return id; },
+        disconnect(id) { assert(handlers.delete(id), 'Disconnect must match an owned signal'); },
+        get_cached_property(name) { return new GLib.Variant('b', name === 'LidIsPresent' || lid); },
+        get_name_owner() { return ':1.100'; },
         async call(method) {
             calls.push(method);
-            return {recursiveUnpack: () => [1, [], [], {}]};
+            return { recursiveUnpack: () => [1, [], [], {}] };
         },
     };
 }
 const initialize = DisplayConfigSwitcher.prototype._initProxy;
 const newForBus = Gio.DBusProxy.new_for_bus;
 const promisify = Gio._promisify;
-DisplayConfigSwitcher.prototype._initProxy = async function () {};
+DisplayConfigSwitcher.prototype._initProxy = async function () { };
 // Fake transports already return promises. Production still uses Gio's wrapper.
-Gio._promisify = () => {};
+Gio._promisify = () => { };
 try {
     {
         const display = proxy();
@@ -44,7 +44,7 @@ try {
             return bus === Gio.BusType.SESSION ? display : lid;
         };
         let notifications = 0;
-        const switcher = new DisplayConfigSwitcher(() => {notifications++;});
+        const switcher = new DisplayConfigSwitcher(() => { notifications++; });
         await initialize.call(switcher);
         assert(buses.length === 2 && buses[0] === Gio.BusType.SESSION && buses[1] === Gio.BusType.SYSTEM,
             'Initialize display proxy followed by UPower proxy');
@@ -62,14 +62,14 @@ try {
         const pending = deferred();
         const display = proxy();
         let creations = 0;
-        Gio.DBusProxy.new_for_bus = () => {creations++; return pending.promise;};
+        Gio.DBusProxy.new_for_bus = () => { creations++; return pending.promise; };
         const switcher = new DisplayConfigSwitcher();
         const initialization = initialize.call(switcher);
         // Completion is queued before cancellation, but continuation has not run.
         pending.resolve(display);
         switcher.destroy();
         let cancelled = false;
-        try {await initialization;} catch (error) {cancelled = isCancelled(error);}
+        try { await initialization; } catch (error) { cancelled = isCancelled(error); }
         assert(cancelled && creations === 1 && display.handlers.size === 0,
             'Cancellation before the first continuation must prevent handlers and UPower initialization');
         assert(switcher._updateStateSourceId === null, 'Cancelled initialization cannot create a source');
@@ -91,17 +91,17 @@ try {
         switcher.destroy();
         pending.resolve(lid);
         let cancelled = false;
-        try {await initialization;} catch (error) {cancelled = isCancelled(error);}
+        try { await initialization; } catch (error) { cancelled = isCancelled(error); }
         assert(cancelled && display.handlers.size === 0 && lid.handlers.size === 0,
             'Cancellation during UPower initialization releases existing handlers and refuses late ones');
         assert(switcher._updateStateSourceId === null, 'Late UPower reply must not restart refresh');
     }
     {
         const failure = new Error('D-Bus connection unavailable');
-        Gio.DBusProxy.new_for_bus = async () => {throw failure;};
+        Gio.DBusProxy.new_for_bus = async () => { throw failure; };
         const switcher = new DisplayConfigSwitcher();
         let caught;
-        try {await initialize.call(switcher);} catch (error) {caught = error;}
+        try { await initialize.call(switcher); } catch (error) { caught = error; }
         assert(caught === failure, 'Initialization failure remains observable');
         switcher.destroy();
         assert(switcher._updateStateSourceId === null, 'Failed initialization leaves no source');
