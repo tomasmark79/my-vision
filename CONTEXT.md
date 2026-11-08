@@ -6,6 +6,45 @@ The current source patch fixes verified shortcut autorepeat/queue defects. Physi
 verification through the actual shortcut is still required; do not claim the gray
 screen is fixed solely because direct profile-application probes passed.
 
+## Current instruction and handoff (09:56)
+
+- User tested current no-OSD/no-VRR version: two switches worked, third gray.
+  Therefore no-VRR is NOT a verified fix. User explicitly wants VRR left off.
+- User authorized autonomous display tests and software USB-C/DP recovery.
+  Healthy virtual hotplug worked with AMD `DP-2/trigger_hotplug` 0 then 1.
+  Primary implementation: Linux v7.3 `amdgpu_dm_debugfs.c`, `trigger_hotplug`.
+- External direct replay of nine mixed exact fixed-refresh profiles passed at
+  09:45:29–09:45:56, all six directed transitions, no fresh kernel blank errors.
+- Created external diagnostic uinput keyboard with documented modern UI_DEV_SETUP;
+  actual Ctrl+Alt+period events reached the real extension handler and D-Bus.
+  Four key presses at 09:46:05, :10, :22, :25 selected external/both/built-in/external.
+  The fourth Apply at 09:46:25.407 caused the first blank error at 09:46:25.726.
+  This is an agent-reproducible failure through the actual extension, not a unit test.
+  Exact external request body matches successful direct call at 09:45:50.416
+  (SHA256 prefix `ac6b43e64a`). This comparison is with direct D-Bus replay, NOT
+  with native Win+P; do not tell user native GNOME sent identical parameters.
+- Virtual hotplug recovery after real failure did NOT restore the laptop image;
+  user needed several physical USB-C disconnects. Recorder/helper incorrectly
+  labelled connector/EDID reappearance as `RECOVERY RESULT True`. This is not
+  physical recovery. Do not run unattended tests relying on it.
+- Second attempt used forced connector-off plus virtual hotplug with independent
+  reset. Reset command had a diagnostic bug: debugfs force accepts max 11 bytes,
+  so `unspecified\n` (12 bytes) was rejected. Forced-off remained set. At 09:51
+  explicitly restored with `write_text('unspecified')`, readback confirmed.
+  No pending root recovery timers or test input/replay processes remained.
+- User now explicitly REQUIRES My Vision to stay enabled, also after a failure,
+  so they can manually recover by unplugging USB-C and selecting a profile.
+  Stop auto-disabling it for recovery or tests. At 09:56 verified ACTIVE and
+  DP-2 force `unspecified`; current native logical config external-only.
+  Removed all automatic recovery/disable actions from private observe-desktop.py;
+  it now logs physical recovery is required. Do not resume automated switching.
+- User's next requested step: prepare kernel 7.4 RC in Nixon for next boot,
+  keeping current extension and no-VRR profiles unchanged. User will reboot
+  themselves, then continue testing. No agent reboot/logout.
+  Owning repo `/home/tomas/.config/nixon`; its AGENTS.md read. Both pinned stable
+  and unstable `linuxPackages_testing` still resolve to 7.3.1. Investigating a
+  kernel-only updated source so GNOME/userspace remain pinned for comparison.
+
 ## Current work after restart (09:05 onward)
 
 - Fresh boot, Shell PID 3804, GNOME/Mutter 50.5; installed JavaScript matches the
