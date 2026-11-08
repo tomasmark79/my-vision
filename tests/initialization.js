@@ -10,7 +10,7 @@ const deferred = () => {
     const promise = new Promise(r => {resolve = r;});
     return {promise, resolve};
 };
-const delay = ms => new Promise(resolve => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_LOW, () => {
     resolve(); return GLib.SOURCE_REMOVE;
 }));
 function proxy(lid = false) {
@@ -50,9 +50,9 @@ try {
             'Initialize display proxy followed by UPower proxy');
         assert(display.handlers.size === 1 && lid.handlers.size === 2, 'Acquire exactly the required signal handlers');
         assert(switcher.getLidState() === 'closed', 'Read initial lid state before publishing monitors');
-        await delay(600);
+        await flushMainLoop();
         assert(notifications === 1 && display.calls.length === 1 && display.calls[0] === 'GetCurrentState',
-            'Initialization publishes one debounced read and never applies a monitor mode');
+            'Initialization publishes one coalesced read and never applies a monitor mode');
         switcher.destroy();
         assert(display.handlers.size === 0 && lid.handlers.size === 0, 'Destroy disconnects both proxies');
         assert(switcher._proxy === null && switcher._lidProxy === null && switcher._cancellable === null,
@@ -72,7 +72,7 @@ try {
         try {await initialization;} catch (error) {cancelled = isCancelled(error);}
         assert(cancelled && creations === 1 && display.handlers.size === 0,
             'Cancellation before the first continuation must prevent handlers and UPower initialization');
-        assert(switcher._updateStateTimeoutId === null, 'Cancelled initialization cannot create a timer');
+        assert(switcher._updateStateSourceId === null, 'Cancelled initialization cannot create a source');
     }
     {
         const display = proxy();
@@ -94,7 +94,7 @@ try {
         try {await initialization;} catch (error) {cancelled = isCancelled(error);}
         assert(cancelled && display.handlers.size === 0 && lid.handlers.size === 0,
             'Cancellation during UPower initialization releases existing handlers and refuses late ones');
-        assert(switcher._updateStateTimeoutId === null, 'Late UPower reply must not restart refresh');
+        assert(switcher._updateStateSourceId === null, 'Late UPower reply must not restart refresh');
     }
     {
         const failure = new Error('D-Bus connection unavailable');
@@ -104,7 +104,7 @@ try {
         try {await initialize.call(switcher);} catch (error) {caught = error;}
         assert(caught === failure, 'Initialization failure remains observable');
         switcher.destroy();
-        assert(switcher._updateStateTimeoutId === null, 'Failed initialization leaves no timer');
+        assert(switcher._updateStateSourceId === null, 'Failed initialization leaves no source');
     }
 } finally {
     DisplayConfigSwitcher.prototype._initProxy = initialize;

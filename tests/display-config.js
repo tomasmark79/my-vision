@@ -36,6 +36,24 @@ const deferred = () => {
     const promise = new Promise(r => { resolve = r; });
     return {promise, resolve};
 };
+const flushMainLoop = () => new Promise(resolve => GLib.idle_add(GLib.PRIORITY_LOW, () => {
+    resolve();
+    return GLib.SOURCE_REMOVE;
+}));
+
+{
+    const switcher = makeSwitcher();
+    let reads = 0;
+    let notified = 0;
+    switcher._proxy = {call: async () => {reads++; return reply(2);}};
+    switcher._onStateChangedCallback = () => {notified++;};
+    switcher.requestStateUpdate();
+    switcher.requestStateUpdate();
+    switcher.requestStateUpdate();
+    await flushMainLoop();
+    assert(reads === 1 && notified === 1, 'Publish fresh state on the next main-loop turn, coalescing repeated requests without a timed delay');
+    switcher.destroy();
+}
 
 {
     const switcher = makeSwitcher();
@@ -90,7 +108,7 @@ const deferred = () => {
     }};
     const apply = switcher.applyMonitorsConfig(logical('1920x1080@75'), {});
     await switcher.applyMonitorsConfig(logical(), {});
-    switcher._debouncedUpdateState();
+    switcher._queueStateUpdate();
     pending.resolve(reply(2));
     let rejected = false;
     try { await apply; } catch { rejected = true; }
@@ -108,22 +126,28 @@ const deferred = () => {
 }
 {
     const switcher = makeSwitcher();
+    const started = deferred();
+    const pending = deferred();
     let notified = 0;
     switcher._onStateChangedCallback = () => { notified++; };
     switcher._proxy = {call: async method => {
         if (method === 'ApplyMonitorsConfig') {
             // Mutter may signal before the method reply arrives.
-            switcher._debouncedUpdateState();
-            switcher._debouncedUpdateState();
+            switcher._queueStateUpdate();
+            switcher._queueStateUpdate();
+            started.resolve();
+            await pending.promise;
         }
         return reply(4);
     }};
-    await switcher.applyMonitorsConfig(logical('1920x1080@75'), {});
-    await new Promise(resolve => GLib.timeout_add(GLib.PRIORITY_DEFAULT, 600, () => {
-        resolve();
-        return GLib.SOURCE_REMOVE;
-    }));
-    assert(notified === 1, 'Changes during Apply must produce one debounced refresh');
+    const apply = switcher.applyMonitorsConfig(logical('1920x1080@75'), {});
+    await started.promise;
+    await flushMainLoop();
+    assert(notified === 0, 'Do not publish intermediate state while Apply is still pending');
+    pending.resolve();
+    await apply;
+    await flushMainLoop();
+    assert(notified === 1, 'Apply completion must publish fresh state without a timed delay');
     switcher.destroy();
 }
 {
@@ -143,7 +167,7 @@ const deferred = () => {
     let rejected = false;
     try { await apply; } catch { rejected = true; }
     assert(rejected && switcher._proxy === null, 'Destroy during Apply must settle the request and release resources');
-    assert(switcher._updateStateTimeoutId === null, 'Destroy must not schedule another refresh');
+    assert(switcher._updateStateSourceId === null, 'Destroy must not schedule another refresh');
 }
 print('Display configuration regression tests passed');
 
@@ -221,9 +245,9 @@ print('Lid and fresh connector validation tests passed');
     const switcher = makeSwitcher();
     let reads = 0;
     switcher._proxy = {call: async () => {reads++; return reply(8);}};
-    switcher._debouncedUpdateState();
+    switcher._queueStateUpdate();
     switcher.destroy();
-    await new Promise(resolve => GLib.timeout_add(GLib.PRIORITY_DEFAULT, 550, () => {resolve(); return GLib.SOURCE_REMOVE;}));
+    await flushMainLoop();
     assert(reads === 0, 'Destroy removes the pending refresh source');
 }
 print('Cancellation and cleanup regression tests passed');

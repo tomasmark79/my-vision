@@ -38,7 +38,7 @@ class DisplayConfigSwitcher extends GObject.Object {
         this._stateRequestId = 0;
         this._currentState = null;
         this._monitorsChangedHandler = null;
-        this._updateStateTimeoutId = null;
+        this._updateStateSourceId = null;
         this._isApplyingConfig = false;
         this._onStateChangedCallback = onStateChanged;
 
@@ -49,9 +49,9 @@ class DisplayConfigSwitcher extends GObject.Object {
     }
 
     destroy() {
-        if (this._updateStateTimeoutId !== null) {
-            GLib.source_remove(this._updateStateTimeoutId);
-            this._updateStateTimeoutId = null;
+        if (this._updateStateSourceId !== null) {
+            GLib.source_remove(this._updateStateSourceId);
+            this._updateStateSourceId = null;
         }
         if (this._proxy !== null && this._monitorsChangedHandler !== null) {
             this._proxy.disconnect(this._monitorsChangedHandler);
@@ -90,12 +90,12 @@ class DisplayConfigSwitcher extends GObject.Object {
 
         this._monitorsChangedHandler = this._proxy.connect('g-signal::MonitorsChanged',
             () => {
-                this._debouncedUpdateState();
+                this._queueStateUpdate();
             });
 
         await this._initLidProxy();
         cancellable.set_error_if_cancelled();
-        this._debouncedUpdateState();
+        this._queueStateUpdate();
     }
 
     async _initLidProxy() {
@@ -113,7 +113,7 @@ class DisplayConfigSwitcher extends GObject.Object {
                 const closed = proxy.get_cached_property('LidIsClosed')?.get_boolean();
                 this._lidState = !proxy.get_name_owner() || present === undefined || closed === undefined
                     ? 'unknown' : present ? (closed ? 'closed' : 'open') : 'any';
-                this._debouncedUpdateState();
+                this._queueStateUpdate();
             };
             this._lidHandlers.push(proxy.connect('g-properties-changed', update));
             this._lidHandlers.push(proxy.connect('notify::g-name-owner', update));
@@ -155,19 +155,16 @@ class DisplayConfigSwitcher extends GObject.Object {
         return this._updateState(false);
     }
 
-    _debouncedUpdateState() {
+    _queueStateUpdate() {
         // Invalidate reads started before this monitor change.
         this._stateRequestId++;
 
-        // Clear any pending update
-        if (this._updateStateTimeoutId !== null) {
-            GLib.source_remove(this._updateStateTimeoutId);
-        }
+        // Coalesce signals in one main-loop turn without delaying the next switch.
+        if (this._updateStateSourceId !== null)
+            return;
 
-        // Debounce updates to avoid rapid successive calls
-        // 500ms delay gives monitors time to fully initialize after connection
-        this._updateStateTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-            this._updateStateTimeoutId = null;
+        this._updateStateSourceId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._updateStateSourceId = null;
             if (this._isApplyingConfig)
                 return GLib.SOURCE_REMOVE;
             this._updateState().catch(error => {
@@ -179,7 +176,7 @@ class DisplayConfigSwitcher extends GObject.Object {
     }
 
     requestStateUpdate() {
-        this._debouncedUpdateState();
+        this._queueStateUpdate();
     }
 
     getMonitorsConfig() {
@@ -267,7 +264,7 @@ class DisplayConfigSwitcher extends GObject.Object {
             // Cancelled operations must not schedule more work on their owner.
             if (!cancellable.is_cancelled()) {
                 this._isApplyingConfig = false;
-                this._debouncedUpdateState();
+                this._queueStateUpdate();
             }
         }
     }

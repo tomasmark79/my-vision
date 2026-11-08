@@ -115,12 +115,19 @@ fault. Dictionary entry order differed, without changing property values/types.
 The built-in scale remains 1.6666666269302368 and external scale 1.5; this is not
 a controlled test of fractional versus integer scaling.
 
-The user also perceived faster switching in the original extension. Source review
-shows that My Vision debounces state updates by 500 ms and holds subsequent
+The user also perceived faster switching in the original extension. At the time
+of that comparison, My Vision debounced state updates by 500 ms and held subsequent
 requests until publication, whereas upstream reads state directly on the monitor
 signal. My Vision additionally refreshes state before Apply. These differences
 can affect interaction latency; no key-to-visible-image latency was measured,
 and none is established as the cause of the gray display.
+
+At the user's subsequent request, the fixed 500 ms delay was removed. State
+updates now coalesce into one idle callback without a timed wait. Pending Apply
+operations still suppress intermediate publication, and the next queued profile
+still waits for refreshed state. Cancellation removes the pending source. This
+is a latency change, not a claimed fix for the 144 Hz fault; saved profiles stay
+at 120 Hz and no further physical switching test was performed for this change.
 
 Private evidence: `~/.local/state/my-vision/diagnostics/20261108-122229-424962/`:
 `trace.jsonl`, `upstream-native-profiles.json`, `upstream-native-profiles.variant`,

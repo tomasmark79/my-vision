@@ -29,8 +29,11 @@ Native upstream profile order: Both, External, BuiltIn.
   direction alone proves causality or a universally safe workaround.
 - Original native Both had internal Y=214 versus old fixture Y=238; other
   semantic request values matched. Original also failed with the new geometry.
-- User perceived faster upstream switching. My Vision's 500 ms state debounce
-  and extra pre-apply refresh can affect latency, but are not proven hang causes.
+- User perceived faster upstream switching. The then-current 500 ms state
+  debounce and extra pre-apply refresh could affect latency, but are not proven
+  hang causes. The user subsequently requested removal of the fixed delay:
+  state refresh now uses one coalesced idle callback, retaining fresh-state
+  serialization and cancellation. Profiles stay at 120 Hz; no new crash test.
 
 The original native profiles remain saved; do not delete or overwrite them.
 A read-only preview of equivalent My Vision profiles was prepared, but NEVER
@@ -49,3 +52,17 @@ OSD restoration commit e362c7e was built, installed and verified byte-for-byte
 against sources. The user subsequently logged in again and reported My Vision
 switching worked at 120 Hz. No additional production code changed during the
 upstream comparison. Original v13 is installed unchanged from official EGO ZIP.
+
+## Fixed-delay removal delivered
+
+The user requested removal of the 500 ms delay. `_queueStateUpdate` now uses
+GLib.idle_add at PRIORITY_DEFAULT_IDLE and coalesces pending updates. Fresh-state
+serialization and teardown cancellation remain intact. A new regression failed
+with the old timer and passed with the idle source; pending Apply, cancellation,
+initialization, profile and startup/OSD checks all passed (55 profile checks,
+4 initialization scenarios, 31 Node checks, plus display/cancellation checks).
+The live read-only smoke test and Nix-shell build passed. Installed JS matches
+the ZIP and reviewed working sources; the running Shell has NOT reloaded it.
+A fresh login is needed to activate this change. No display switching test ran.
+Existing unrelated formatting changes in eight workspace files were preserved
+and excluded from the delay-removal commit.
