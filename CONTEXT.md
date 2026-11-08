@@ -35,18 +35,28 @@ screen is fixed solely because direct profile-application probes passed.
   24 Node startup/restore, 3 recorder checks, live read-only check, diff check.
 - Built with `nix-shell shell.nix --run 'bash build.sh -b'`. ZIP JS matches source;
   SHA256 `39c76595f838b5d7f98bf2e07e7814b9f31b8b08903acc40450971f12451fe5a`.
-- User's prior explicit authorization to install the repair remains applicable.
-  Next: commit verified source patch and install this ZIP with backup; no logout.
+- Verified source committed as `1616cb4`; installed the ZIP under the user's
+  existing repair authorization. All ten packaged files matched the installed
+  copy. Backup: `installed-before-shortcut-fix.zip` in the 09:08 evidence directory.
+  No logout or session restart performed.
 - Prepared session counterpart directly from reviewed source methods:
   `/home/tomas/.local/state/my-vision/diagnostics/20261108-090801-328562/apply-shortcut-fix.mjs`
   symlink `/tmp/my-vision-shortcut-fix-20261108.js`, Node syntax check passed.
-  User can run in Alt+F2 → lg:
-  `(await import('file:///tmp/my-vision-shortcut-fix-20261108.js')).apply()`
-  This patches six methods of the cached toggle class, adds backend state-request
-  method, initializes request state and re-registers shortcuts with repeat ignored.
-  It does NOT run automatic display switches. Then test actual Ctrl+Alt+period,
-  including fast repeated presses, and inspect recorder for conflicts/driver errors.
-  Do not use old OSD-only probes as proof of shortcut behavior.
+  First helper failed midway in `_updateMenu`: the global Shell gettext wrapper
+  inferred no extension URL from a method injected from `/tmp` (`url is null`).
+  It had replaced methods but had not re-registered key bindings.
+- Corrected helper `apply-shortcut-fix-v2.mjs` explicitly binds translations with
+  `Extension.defineTranslationFunctions()` to the installed extension URL and
+  imports `displayRecord` used by saving. Translation lookup is checked before
+  mutations. Six injected method bodies match reviewed source exactly; Node syntax
+  check passed. User ran the new `/tmp/my-vision-shortcut-fix-20261108-v2.js`
+  successfully around 09:25, including binding replacement. This does not switch
+  displays. User is now testing 6–10 short actual Ctrl+Alt+period presses, waiting
+  for each picture to settle, through external/built-in/both profiles.
+- Additional pre-patch evidence: an Apply at 09:18:22.311 was followed by AMD blank
+  errors before the next Apply at 09:18:45.238. Queue conflicts alone cannot explain
+  all failures. Do not claim the shortcut queue fix resolves the physical failure
+  until the actual key path is tested; no post-patch visual result yet.
 
 ## Confirmed reproduction (2026-11-08, Europe/Prague)
 
