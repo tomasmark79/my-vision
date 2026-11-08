@@ -65,7 +65,10 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
    Original value `0` is saved in `psr-test-before.json`; applied value in
    `psr-test-applied.json` in the evidence directory. This changes the PSR
    eligibility for subsequent panel mode/power transitions, not instant PSR state.
-   The user is now repeating physical switches. No boot parameters or persistent
+   This also failed: at 08:27:41.914 external-only fixed 144 Hz was requested,
+   at 08:27:42 the same blank-CRTC errors began, followed by flip timeouts.
+   Readback still showed the PSR exclusion flag `1`, state `0`.
+   No boot parameters or persistent
    host configuration have been changed. Restore by writing `0` to that exact
    node when appropriate; keep a trace marker for comparisons.
    Read-only debugfs showed panel PSR support yes, panel replay support no,
@@ -76,6 +79,47 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
    assert the exact physical gray-screen symptom.
 4. If a kernel/system fix is needed, consult `~/.codex/PROJECTS.md` to identify
    its owning project; do not change host configuration speculatively.
+
+## Important isolation results (08:29 onward)
+
+- User authorized disabling My Vision temporarily for a GNOME Settings test.
+  `gnome-extensions info` verified `Enabled: No`, `State: INACTIVE`.
+- Native GNOME switching did not fail, but Win+P/GNOME kept reverting the external
+  output to 60 Hz or changing resolution/mirroring. Some 4K/144 Hz requests were
+  captured, but the test was not a controlled equivalent of the failing sequence.
+- User then authorized direct automatic switching, later explicitly requested 20
+  steps and random transitions including `Both` and every direction among the
+  three states. Prepared disposable `replay-profiles.mjs` in the evidence directory.
+  It imports the real repository `DisplayConfigSwitcher` and `applyProfile()`,
+  reads the current saved profiles without writing settings, uses 3-second pauses
+  and a 4-second D-Bus proxy timeout, and stops on failed state reads.
+- Results with extension inactive, no Shell UI/OSD, fixed-refresh test profiles
+  and PSR exclusion still `1`: six steps (five effective applies) passed with user
+  visual confirmation; 20 alternating steps passed; 20 mixed/random steps passed
+  with user visual confirmation and 20 matching D-Bus replies, no AMD errors.
+- Mixed sequence seed 20261108, indices external=0, built-in=1, both=2:
+  `[0,1,0,1,2,1,0,1,2,0,1,0,2,1,2,1,2,0,2,0]`.
+  Includes every directed transition. Exact modes remain 4K/144 Hz and 1600p/120 Hz.
+- This strongly implicates something in the Shell extension path. It does NOT yet
+  identify OSD, menu handling, or self-issued D-Bus requests as the root cause.
+  The core profile application code also ran successfully in the standalone test.
+- Next test prepared: Shell-only `shell-probe.mjs` in evidence directory, with
+  symlink `/tmp/my-vision-probe-20261108.js`. User was asked to open Alt+F2 → `lg`
+  and run:
+  `(await import('file:///tmp/my-vision-probe-20261108.js')).start(false)`
+  It closes Looking Glass, enables the original extension, temporarily suppresses
+  only `_showPendingOsd`, and runs the same 20 mixed steps through the REAL
+  toggle's `_onConfig()`. Logs use `[My Vision probe]`. It restores the original
+  OSD method and proxy timeout afterward unless the owner was cancelled.
+  `start(true)` is supported for a subsequent comparison with OSD enabled.
+  This helper is a disposable diagnostic, syntax-checked with Node; not yet run
+  in Shell at time of this update. Need user to execute the first LG command.
+- GNOME Shell Eval returned `(false, '')`: unsafe mode is not enabled. Do not
+  enable unsafe mode or bypass Shell's sender checks. Direct remote ShowOSD is
+  also sender-restricted. Looking Glass is the intended local diagnostic path.
+- Checked official GNOME 50.5 sources: extension modules are cached and cannot
+  simply load changed JavaScript after disable/enable. No new extension sources
+  have been installed and the session has not been restarted.
 
 ## Verification so far
 
