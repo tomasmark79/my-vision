@@ -4,8 +4,9 @@ Updated 2026-11-08. This records one hardware-specific investigation, not a
 general assertion about all AMD or GNOME systems. After the source review, the
 user restored native profile OSD feedback, then authorized a manual comparison
 with the original extension. That comparison reproduced the fault and was stopped
-at the user's request. My Vision is enabled again with the working 120 Hz profiles;
-no further crash tests are planned.
+at the user's request. My Vision is enabled again. The user subsequently established
+a mixed-refresh workaround: external-only at 120 Hz, external at 144 Hz when both
+displays are enabled. No further crash tests are planned.
 
 ## Established result
 
@@ -16,8 +17,9 @@ kernel/firmware stack: the independent client still calls Mutter's
 `ApplyMonitorsConfig`.
 
 The external 4K/120 Hz configuration passed the tested transitions, including
-manual extension shortcuts. The 144 Hz failure remains unresolved. Changing the
-kernel from 7.3.1 to 7.4-rc1 did not eliminate it.
+manual extension shortcuts. The later user-tested mixed-refresh setup also works
+in both cycling directions (see below). External-only at 144 Hz remains unresolved.
+Changing the kernel from 7.3.1 to 7.4-rc1 did not eliminate the fault.
 
 ## Environment and evidence
 
@@ -126,8 +128,9 @@ At the user's subsequent request, the fixed 500 ms delay was removed. State
 updates now coalesce into one idle callback without a timed wait. Pending Apply
 operations still suppress intermediate publication, and the next queued profile
 still waits for refreshed state. Cancellation removes the pending source. This
-is a latency change, not a claimed fix for the 144 Hz fault; saved profiles stay
-at 120 Hz and no further physical switching test was performed for this change.
+is a latency change, not a claimed fix for the 144 Hz fault. At delivery, saved
+profiles remained at 120 Hz and no further physical switching test was performed
+for that change. The user later changed profiles as recorded below.
 
 Private evidence: `~/.local/state/my-vision/diagnostics/20261108-122229-424962/`:
 `trace.jsonl`, `upstream-native-profiles.json`, `upstream-native-profiles.variant`,
@@ -138,6 +141,56 @@ the entire capture as free of all errors. The passive recorder was stopped,
 upstream disabled, and My Vision re-enabled after verifying its available
 open-lid profiles still request fixed 120 Hz. The read-only proposal for copying
 native profiles into My Vision was never applied.
+
+## User-confirmed mixed-refresh workaround (13:27 CET)
+
+On 2026-11-08 the user reported that manual cycling works in both directions
+with the external-only profile at 120 Hz and the external monitor at 144 Hz only
+when both monitors are enabled. The user explicitly identified refresh rate as
+the sole discriminating factor in their tests: external-only 120 Hz works,
+external-only 144 Hz triggers the fault, and both-enabled external 144 Hz works.
+This records the user's physical test result; no cycle count or duration was
+provided, and no new automated switching or crash reproduction was performed.
+
+A read-only settings and Mutter snapshot at **13:27:35 CET** confirmed the
+following three saved My Vision profiles, in their current order. All require
+an open lid and the same complete two-monitor physical set, including whichever
+monitor a profile disables.
+
+| Profile | Built-in panel | Gigabyte M32U | Stable profile ID |
+| --- | --- | --- | --- |
+| Gigabyte 120Hz | Off | 3840×2160 @ 120.000 Hz, scale 1.5, primary | `5ecda46e-da54-4bbe-9349-69590521db02` |
+| Both 120Hz/144Hz | 2560×1600 @ 120.001 Hz, scale 1.6666666269302368 | 3840×2160 @ 143.999 Hz, scale 1.5, primary | `eaec8031-b98f-4456-a39b-0e36bed665c0` |
+| BuiltIn 120Hz | 2560×1600 @ 120.001 Hz, scale 1.6666666269302368, primary | Off | `8a7c8350-e47a-4424-a851-72384738f32d` |
+
+`Both 120Hz/144Hz` was active in the live snapshot, with both saved mode IDs
+confirmed by Mutter. All three profiles passed the existing hardware/lid/mode
+validation. Fixed refresh is used throughout, with no VRR; stored properties
+are layout-mode uint32 1, color-mode uint32 0 and underscanning false. Both mode
+places the internal panel at (0, 262) and the external at (1536, 0). Single-display
+profiles start at (0, 0). The internal Y offset differs from earlier fixtures
+(214/238); this is retained as snapshot metadata, not evidence for a layout cause.
+My Vision was ACTIVE, the original extension disabled, and Linux was 7.4.0-rc1.
+
+With the current profile order, forward cycling is External120 → Both144 →
+BuiltIn120 → External120; reverse is External120 → BuiltIn120 → Both144 →
+External120. Both directions avoid requesting external-only 144 Hz. The reported
+success includes Both144 → External120: disabling the internal panel is therefore
+not by itself sufficient to explain the observed failures.
+
+This supports retaining 144 Hz in the both-enabled profile while keeping the
+external-only profile at 120 Hz on this setup. It does not identify the internal
+Mutter/AMD driver/firmware defect, establish indefinite reliability, or justify a
+global 144 Hz ban. The user observation must not be generalized to every possible
+144 Hz transition or treated as proof that the extension caused the fault.
+
+Private evidence:
+`~/.local/state/my-vision/diagnostics/20261108-132735-mixed-refresh-readonly/`
+contains `profiles-v2.json` (exact saved profile document), `mutter-state.json`
+(raw GetCurrentState result), and `summary.json` (availability and decoded modes).
+These are read-only observations of settings/display state; only diagnostic files
+were written. No settings were changed. No kernel error-free interval is claimed
+for this session, since it was not recorded as a controlled timed trial.
 
 ## Findings that constrain the diagnosis
 
@@ -180,7 +233,11 @@ affect a path not enabled for this Phoenix configuration.
 
 ## Current workaround and continuation
 
-With user approval, only the open-lid, external-connected `Gigabyte` and `Both`
+The current user-tested workaround is the mixed-refresh setup above: external-only
+120 Hz, both-enabled external 144 Hz, built-in 120 Hz. Preserve these user-created
+profiles and do not restore earlier test backups over them.
+
+Earlier, with user approval, only the open-lid, external-connected `Gigabyte` and `Both`
 profiles were changed to exact `3840x2160@120.000` and renamed
 `Gigabyte 120Hz (test)` and `Both 120Hz (test)`. Stable IDs, layout, scale, other
 properties and other hardware/lid contexts were preserved. Other contexts may
@@ -189,7 +246,7 @@ still contain 144 Hz or VRR; this was not a global settings conversion.
 The evidence directory contains `profiles-before-120hz-test.json`,
 `profiles-with-120hz-test.json`, and `test-120hz-profiles.mjs`. Its guarded restore
 operation refuses to overwrite subsequently changed profile configurations.
-Do not restore them under the current instruction to keep 120 Hz.
+Do not restore them over the newer user-created mixed-refresh profiles.
 
 My Vision remains enabled for normal use and recovery. The source-research phase
 produced no kernel or extension fix for the 144 Hz fault. At the user's request,

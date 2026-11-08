@@ -1,6 +1,6 @@
-# Display investigation: tests stopped, 120 Hz restored
+# Display investigation: tests stopped, mixed-refresh workaround
 
-Updated 2026-11-08 after the original-extension comparison.
+Updated 2026-11-08 after the user's mixed-refresh test report and 13:27:35 CET read-only snapshot.
 
 ## Current instruction and state
 
@@ -9,9 +9,16 @@ appeared when cycling backward. They explicitly asked to preserve the successful
 forward order and the difference between directions for future investigation.
 No further crash tests or automatic switching. My Vision is ACTIVE again;
 Display Configuration Switcher v13 is INACTIVE. The passive recorder has exited.
-All available open-lid My Vision profiles were checked before re-enabling: fixed
-120 Hz for the external monitor and built-in panel. Other saved hardware/lid
-contexts were not modified. Do not restore old 144 Hz backups.
+The user subsequently replaced the saved profiles with three open-lid profiles:
+Gigabyte 120Hz (external only), Both 120Hz/144Hz (internal 120, external 144), and
+BuiltIn 120Hz (internal only), in that order. All require both physical monitors
+connected. The read-only snapshot confirms Both is currently active, fixed refresh
+without VRR. The user reports successful switching in both directions and explicitly
+identifies frequency as the sole discriminating factor in their tests: external-only
+120 works, external-only 144 fails, both-enabled external 144 works. Preserve this
+setup; do not restore any old test backups or lower Both to 120 automatically.
+See the mixed-refresh section of docs/display-switching-diagnosis.md for IDs,
+exact modes, layout, evidence path and limits. No new crash test is authorized.
 
 ## Durable findings
 
@@ -33,7 +40,8 @@ Native upstream profile order: Both, External, BuiltIn.
   debounce and extra pre-apply refresh could affect latency, but are not proven
   hang causes. The user subsequently requested removal of the fixed delay:
   state refresh now uses one coalesced idle callback, retaining fresh-state
-  serialization and cancellation. Profiles stay at 120 Hz; no new crash test.
+  serialization and cancellation. Profiles stayed at 120 Hz at that delivery;
+  the user subsequently configured the mixed-refresh setup above.
 
 The original native profiles remain saved; do not delete or overwrite them.
 A read-only preview of equivalent My Vision profiles was prepared, but NEVER
@@ -41,7 +49,10 @@ applied. Do not activate it without a new user instruction.
 
 ## Evidence and installed work
 
-Latest stopped capture:
+Latest read-only snapshot: diagnostics/20261108-132735-mixed-refresh-readonly/
+under ~/.local/state/my-vision/. Details are in the diagnosis document.
+
+Latest stopped switching capture:
 /home/tomas/.local/state/my-vision/diagnostics/20261108-122229-424962/
 Contains trace.jsonl, native upstream profile snapshots, semantic differences,
 and upstream-switch-order.json. Recorder unit my-vision-upstream-capture.service
