@@ -239,6 +239,38 @@ is displaying correctly; the symptom marker is needed to correlate the failure.
 
 Check the recorder's reply correlation with `python3 tests/capture-display.py`.
 
+### Compare with a standalone display request
+
+`tools/direct-display.mjs` calls Mutter directly using Gio/D-Bus. It imports no
+extension modules, registers no shortcuts, and writes no settings. Each invocation
+prepares or sends exactly one request; it never schedules another switch or tries
+to recover a failed display. Keep the passive recorder running alongside it.
+
+Provide a frozen JSON object keyed by target name. Each target contains `lid`
+(`open` or `closed`), `displays` (records with `connector`, `vendor`, `product`,
+`serial`, and `builtin`), `logical` (saved logical-monitor tuples), and `properties`
+(saved configuration properties). The diagnostic evidence directory can hold this
+snapshot separately from the extension's live settings.
+
+```bash
+gjs -m tools/direct-display.mjs CONFIG.json external --preview
+gjs -m tools/direct-display.mjs CONFIG.json external --verify
+gjs -m tools/direct-display.mjs CONFIG.json external --apply
+```
+
+Preview is read-only and is the default. By default, verify and apply require My
+Vision to be disabled so it cannot react to the test; restore it after the test,
+including on failure. For a separate comparison with the extension reacting to
+externally applied changes, append `--allow-active-extension`. The printed
+`extensionState` records whether that request was isolated. Verify uses Mutter's
+method 0, and apply uses method 1 (temporary), as
+defined by the [DisplayConfig interface](https://github.com/GNOME/mutter/blob/50.5/data/dbus-interfaces/org.gnome.Mutter.DisplayConfig.xml).
+The script requires the complete connected monitor set and matching lid state,
+resolves connectors by unambiguous hardware identity, and refuses unavailable
+exact modes or scales. It prints the request and immediate state readback; a
+successful reply still requires visual confirmation. Stop after a gray screen
+or new AMD display errors rather than issuing more switches.
+
 ## License
 
 [GPL-3.0-or-later](LICENSE). Copyright © 2024 Tomáš Mark.

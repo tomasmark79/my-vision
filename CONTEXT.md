@@ -6,7 +6,59 @@ The current source patch fixes verified shortcut autorepeat/queue defects. Physi
 verification through the actual shortcut is still required; do not claim the gray
 screen is fixed solely because direct profile-application probes passed.
 
-## Current kernel comparison (11:26)
+## Standalone comparison and next isolation (11:39)
+
+- User clarified that the initial post-7.4 failures around 11:26 were Win+P,
+  with My Vision active. Do NOT attribute those to Ctrl+Alt+period.
+- Added `tools/direct-display.mjs`: independent Gio/D-Bus client, no extension
+  module imports, frozen JSON input, exact identity/mode/scale, complete physical
+  set and lid validation, one request per invocation, preview default. Requires
+  extension disabled unless explicit `--allow-active-extension` comparison flag.
+- Frozen targets external/builtin/both:
+  `/home/tomas/.local/state/my-vision/diagnostics/20261108-112603-754397/direct-display-profiles.json`.
+  They preserve the current fixed-refresh profiles and stable monitor identities.
+- User explicitly authorized temporary extension disable during the isolated test
+  and re-enable afterward/on error. This is an exception to keep-enabled request
+  for test duration; never leave extension disabled after a test.
+- Standalone tests WITH EXTENSION DISABLED: first builtin/external pair at
+  11:33:48–:53, then both/external/builtin/external/both/external/builtin/external
+  at 11:34:47–11:35:24. No new kernel errors. User visually confirmed BOTH series
+  passed. Ten temporary requests, first request in second series was a no-op.
+- SAME independent client WITH EXTENSION ACTIVE: builtin at 11:36:23.758,
+  external at 11:36:29.039. AMD blank errors followed, then flip timeout. User
+  confirmed actual gray screen and would recover physically over USB-C. Stopped
+  immediately, remaining both/external steps did not run. Extension remains ACTIVE.
+- Trace shows no additional ApplyMonitorsConfig from Shell during this failure;
+  the only actual changes were from the independent client. All outgoing mode
+  assignments were correct DP-2/4K144 and eDP-1/1600p120. Thus the extension's
+  REACTION to external changes is implicated, not necessarily its apply/shortcut
+  entry point. Neither a second Apply nor connector confusion explains this run.
+- Read-only audit of real `profileRequest` matched current identities, remapped
+  saved DP-1 to current DP-2, and passed reversed enumeration/synthetic connector
+  renumbering. Copy: `connector-audit.mjs` in evidence directory. No general proof
+  of no mapping bugs, but observed failing requests target correct connectors.
+- Independent logs: `independent-trial.log`; private orchestrator
+  `/tmp/my-vision-direct-trial.py` checks fresh AMD errors and restores extension.
+  Do not blindly resume it; user still must confirm physical recovery.
+- Next hypothesis to isolate: `_updateMenu()` actor mutation vs backend state
+  reads. Prepared session-only `isolate-menu.mjs` in evidence directory, symlink
+  `/tmp/my-vision-isolate-menu.mjs`. Not applied yet. Looking Glass invocation:
+  `(await import('file:///tmp/my-vision-isolate-menu.mjs')).start()`.
+  Keeps model selection, shortcuts, state reads and `_onStateChanged` intact,
+  temporarily skips only menu actor changes. Restores original method after
+  180 seconds using weak owner ref + captured cancellable. No display switch.
+  Wait for `menu-isolation-ready.json` marker, then run a SHORT independent test
+  with active extension within that window. Not a production fix.
+- First attempt of standalone guard used wrong D-Bus destination and stopped
+  before any Apply; corrected to org.gnome.Shell.Extensions. A preview indexing
+  error was also corrected before any modeset. Guard now correctly rejects active
+  state 1 unless comparison flag, accepts disabled state 2.
+- Checks passed: schema, 55 profile, display/lid/cancellation, 4 initialization,
+  24 Node startup/restore, syntax/diff, four live read-only refusals (bad identity,
+  wrong monitor count, nonexistent mode, duplicate assignment). No extension
+  production source changed and no root-cause fix claimed.
+
+## Kernel comparison baseline (11:26)
 
 - User completed the Nixon build and rebooted themselves. Verified running
   Linux `7.4.0-rc1`, GNOME Shell 50.5, selected generation 1406. Generation
