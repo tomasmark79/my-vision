@@ -42,6 +42,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             this._handledContext = false;
             this._retryCount = 0;
             this._pendingProfile = null;
+            this._requestedProfile = null;
             this._currentConfigs = [];
             this._activeConfig = null;
             this._nameDialog = new NameDialog();
@@ -60,7 +61,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             for (const [key, forward] of [['display-configuration-switcher-shortcut-next', true], ['display-configuration-switcher-shortcut-previous', false]]) {
                 Main.wm.removeKeybinding(key);
                 if (this._settings.get_boolean('display-configuration-switcher-shortcuts-enabled'))
-                    Main.wm.addKeybinding(key, this._settings, Meta.KeyBindingFlags.NONE,
+                    Main.wm.addKeybinding(key, this._settings, Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
                         Shell.ActionMode.NORMAL, () => this._cycleConfig(forward));
             }
         }
@@ -78,8 +79,23 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 this._handledContext = false;
                 this._retryCount = 0;
             }
+            if (!this._isApplyingConfig)
+                this._requestedProfile = null;
             this._store.enrich(this._displayConfigSwitcher.getPhysicalDisplayInfo() ?? []);
             this._updateMenu();
+            if (!this._isApplyingConfig) {
+                // A method reply precedes this refreshed state. Keep later
+                // selections queued until the switcher publishes that state.
+                const pending = this._pendingProfile;
+                this._pendingProfile = null;
+                if (pending && pending.context === key) {
+                    const profile = this._store.profiles.find(p => p.id === pending.id);
+                    if (profile) {
+                        this._onConfig(profile);
+                        return;
+                    }
+                }
+            }
             if (key === null || this._isApplyingConfig || this._handledContext || this._currentConfigs.length === 0)
                 return;
             const profile = selectProfile(this._currentConfigs, this._store.last[key],
@@ -126,7 +142,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             // Saving remains available when a legacy/shared profile matches: a
             // separate lid-specific profile is a valid new configuration.
             const add = new PopupMenu.PopupImageMenuItem(_('Save Current Configuration'), 'list-add-symbolic');
-            add.setSensitive(this._getContext() !== null && !this._isApplyingConfig);
+            add.setSensitive(this._getContext() !== null && !this._isApplyingConfig && this._requestedProfile === null);
             add.connect('activate', () => this._onAddConfig());
             this.menu.addMenuItem(add);
             const prefs = new PopupMenu.PopupImageMenuItem(_('Modify Configurations'), 'document-edit-symbolic');
@@ -138,22 +154,28 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             const count = this._currentConfigs.length;
             if (!count)
                 return;
-            const index = this._currentConfigs.findIndex(p => p.id === this._activeConfig?.id);
+            const key = this._getContext();
+            const requested = this._pendingProfile?.context === key ? this._pendingProfile :
+                this._requestedProfile?.context === key ? this._requestedProfile : null;
+            const index = this._currentConfigs.findIndex(p => p.id === (requested?.id ?? this._activeConfig?.id));
             this._onConfig(this._currentConfigs[index < 0 ? 0 : (index + (forward ? 1 : -1) + count) % count]);
         }
 
         async _onConfig(profile, automatic = false) {
             if (!profile)
                 return;
-            if (this._isApplyingConfig) {
+            if (this._isApplyingConfig || this._requestedProfile !== null) {
                 if (!automatic)
                     this._pendingProfile = {id: profile.id, context: this._getContext()};
+                if (!this._isApplyingConfig)
+                    this._displayConfigSwitcher.requestStateUpdate();
                 return;
             }
             const key = this._getContext();
             if (key === null)
                 return;
             const cancellable = this._cancellable;
+            this._requestedProfile = {id: profile.id, context: key};
             this._handledContext = true;
             this._isApplyingConfig = true;
             try {
@@ -179,12 +201,6 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             } finally {
                 if (!cancellable.is_cancelled()) {
                     this._isApplyingConfig = false;
-                    if (this._pendingProfile) {
-                        const pending = this._pendingProfile;
-                        this._pendingProfile = null;
-                        if (pending.context === this._getContext())
-                            this._onConfig(this._store.profiles.find(p => p.id === pending.id));
-                    }
                 }
                 // The switcher publishes a debounced fresh state after Apply.
             }
@@ -210,7 +226,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             const expectedContext = this._dialogContext;
             const cancellable = this._cancellable;
             try {
-                if (this._isApplyingConfig)
+                if (this._isApplyingConfig || this._requestedProfile !== null)
                     throw new Error('Displays are changing. Please save the configuration again.');
                 const refreshed = await this._displayConfigSwitcher.refresh();
                 cancellable.set_error_if_cancelled();
@@ -256,6 +272,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             this._nameDialog.destroy();
             this._nameDialog = null;
             this._pendingProfile = null;
+            this._requestedProfile = null;
             this._currentConfigs = [];
             this._activeConfig = null;
             this._store = null;

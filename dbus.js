@@ -178,6 +178,10 @@ class DisplayConfigSwitcher extends GObject.Object {
         });
     }
 
+    requestStateUpdate() {
+        this._debouncedUpdateState();
+    }
+
     getMonitorsConfig() {
         if (this._currentState === null) { return null; }
 

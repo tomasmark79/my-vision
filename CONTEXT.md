@@ -1,9 +1,52 @@
 # Intermittent gray display investigation
 
-Goal: identify and fix the intermittent gray external display when switching
-My Vision profiles or reconnecting USB-C. A/B testing isolated profile OSD as the
-trigger. Sources now remove it, all regression checks and packaging passed.
-Installation and final verification with original settings are still pending.
+Goal: identify and fix the intermittent gray display when switching My Vision.
+Investigation reopened after a fresh reboot: removing OSD was NOT a complete fix.
+The current source patch fixes verified shortcut autorepeat/queue defects. Physical
+verification through the actual shortcut is still required; do not claim the gray
+screen is fixed solely because direct profile-application probes passed.
+
+## Current work after restart (09:05 onward)
+
+- Fresh boot, Shell PID 3804, GNOME/Mutter 50.5; installed JavaScript matches the
+  OSD-free repository revision `1a01eed` in all seven modules, no OSD references.
+- User clarified the new failure was Ctrl+Alt+period, not the menu. Next shortcut
+  is `<Control><Alt>period`, previous `<Control><Alt>comma`; not Win+P.
+- At 09:05:55 Shell reported invalid logical-monitor/fullscreen indices; at
+  09:05:56–57 AMD reported `failed to blank crtc`, then flip timeout at 09:06:07.
+  This proves the previous OSD-only conclusion was too strong. README corrected.
+- Started fresh passive capture at
+  `/home/tomas/.local/state/my-vision/diagnostics/20261108-090801-328562/`.
+  `latest` points here; current recording process session 77287. User's single
+  short press at 09:17:27 produced exactly one successful Apply, no driver errors.
+- Code review found: shortcuts used `Meta.KeyBindingFlags.NONE` (autorepeat allowed),
+  cycling used stale `_activeConfig`, and queued requests drained immediately on
+  method reply before the debounced state publication. Direct `_onConfig()` probes
+  bypassed both key registration and `_cycleConfig()`.
+- Three regression tests failed against original code: missing repeat suppression,
+  two fast key presses dispatched `open,open` prematurely, and a press after reply
+  dispatched before state publication. Fixed using IGNORE_AUTOREPEAT (verified in
+  Mutter 46 `src/meta/prefs.h`, value 16), an application request `{id, context}`,
+  and draining the latest queued selection only from refreshed `_onStateChanged`.
+  `requestStateUpdate()` allows a subsequent selection to retry a failed/missing
+  state publication. No lifecycle flags, new timers or speculative API guards.
+- Additional coverage: latest queued cycle target, publication retry, old-context
+  queue discard. Full checks passed: 55 profile, display/lid/cancellation, 4 init,
+  24 Node startup/restore, 3 recorder checks, live read-only check, diff check.
+- Built with `nix-shell shell.nix --run 'bash build.sh -b'`. ZIP JS matches source;
+  SHA256 `39c76595f838b5d7f98bf2e07e7814b9f31b8b08903acc40450971f12451fe5a`.
+- User's prior explicit authorization to install the repair remains applicable.
+  Next: commit verified source patch and install this ZIP with backup; no logout.
+- Prepared session counterpart directly from reviewed source methods:
+  `/home/tomas/.local/state/my-vision/diagnostics/20261108-090801-328562/apply-shortcut-fix.mjs`
+  symlink `/tmp/my-vision-shortcut-fix-20261108.js`, Node syntax check passed.
+  User can run in Alt+F2 → lg:
+  `(await import('file:///tmp/my-vision-shortcut-fix-20261108.js')).apply()`
+  This patches six methods of the cached toggle class, adds backend state-request
+  method, initializes request state and re-registers shortcuts with repeat ignored.
+  It does NOT run automatic display switches. Then test actual Ctrl+Alt+period,
+  including fast repeated presses, and inspect recorder for conflicts/driver errors.
+  Do not use old OSD-only probes as proof of shortcut behavior.
 
 ## Confirmed reproduction (2026-11-08, Europe/Prague)
 
@@ -138,8 +181,10 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
   ZIP: `dist/my-vision@digitalspace.name.zip`, seven JavaScript modules verified
   byte-for-byte against source; diagnostics excluded.
   SHA-256: `29c69a6c8b35521eeb5a31380ee57b452d0cb59ab1c799ed73afef7dbcaf760c`.
-  Nothing installed or published yet. Seek the user's instruction for installation
-  once this concrete artifact is ready; never log the user out automatically.
+  User explicitly authorized installation; `gnome-extensions install --force`
+  completed and all 10 installed files match the ZIP byte-for-byte. Previous
+  installed directory backed up as `installed-before-fix.zip` in original evidence
+  directory. No session restart or publication.
 - Restored temporary test changes: PSR exclusion flag back to original `0`;
   the two test profile configurations restored exactly from backup, preserving
   remembered selections made during the investigation. Their original VRR modes
@@ -154,6 +199,10 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
   Afterward run the 20 mixed `start(false)` probe with restored original VRR/PSR
   settings and confirm physical output plus journal health. Do not use `start(true)`
   as an OSD-positive control after patching the prototype: original OSD is then gone.
+  User was given a single Looking Glass command combining activation and final test:
+  `await (await import('file:///tmp/my-vision-osd-fix-20261108.js')).apply(); (await import('file:///tmp/my-vision-probe-20261108.js')).start(false)`
+  Await execution, `[My Vision fix]` confirmation, twenty-step PASS and physical
+  confirmation. Source installation alone does not activate cached Shell code.
 - GNOME Shell Eval returned `(false, '')`: unsafe mode is not enabled. Do not
   enable unsafe mode or bypass Shell's sender checks. Direct remote ShowOSD is
   also sender-restricted. Looking Glass is the intended local diagnostic path.
@@ -179,6 +228,6 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
   initialization 4, startup/restore 18, diagnostic tool 3. A live read-only check
   initially failed inside Context Mode because its subprocess lacks session D-Bus
   environment; reran with normal exec in the desktop environment and it passed.
-- Pending: installation authorization, optional live helper activation and final
-  20-step verification after restoring original VRR/PSR settings. Build complete;
-  no installation, session reload or publication yet.
+- Pending: live helper activation and final 20-step verification after restoring
+  original VRR/PSR settings. Build and authorized installation complete; no session
+  restart or publication.

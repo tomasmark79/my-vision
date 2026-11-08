@@ -153,6 +153,9 @@ against that fresh state and verifies the saved mode/scale/color mode. It skips
 ApplyMonitorsConfig when the requested settings already hold. A context change
 supersedes the old request; transient stale-state retries are bounded. Manual
 selections made during an apply are queued, with the latest selection taking priority.
+Queued selections wait for the switcher's refreshed state before starting another
+apply. Keyboard cycling advances from the latest requested profile during this
+interval, and holding a shortcut does not repeat display switches.
 No missing mode is silently replaced with a lower refresh rate. If no profile is
 usable, the menu asks you to save one; the extension cannot invent your preferences.
 
@@ -185,12 +188,12 @@ Also test rapid lid changes and disabling the extension during a switch.
 Use the development environment above if Blueprint or GLib build tools are missing.
 After installing changed JavaScript, start a fresh GNOME session.
 
-Profile switches do not display a native GNOME OSD. Controlled live testing on
-GNOME 50 with AMD graphics reproduced a gray display and kernel display timeouts
-when the profile OSD was enabled; the same 20 mixed profile switches completed
-with OSD suppressed. The active profile is shown in Quick Settings instead.
-Disabling VRR alone did not prevent the reproduced failure. This workaround
-removes the confirmed trigger; it does not claim to fix the underlying driver.
+Profile switches do not display a native GNOME OSD; the active profile is shown
+in Quick Settings. During an intermittent AMD display-hang investigation, a
+20-switch sequence passed with OSD suppressed and failed with it enabled.
+However, switching through a keyboard shortcut after a fresh boot also failed
+without OSD. OSD removal alone is therefore not a complete fix. Successful tests
+that call profile application directly do not verify the keyboard shortcut path.
 
 If a profile is unavailable, check that the connected monitor set and lid state
 match its saved context. Ambiguous monitor identities are deliberately refused.

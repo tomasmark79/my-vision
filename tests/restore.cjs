@@ -9,6 +9,7 @@ function menuFixture(version = '50.0') {
         .replace('export default class MyVisionExtension', 'class MyVisionExtension');
     const notices = [];
     const osds = [];
+    const bindings = new Map();
     class Cancelled extends Error {}
     const cancellable = {
         cancelled: false,
@@ -21,8 +22,14 @@ function menuFixture(version = '50.0') {
         isCancelled: error => error instanceof Cancelled,
         Gio: {ThemedIcon: class {constructor(props) {Object.assign(this, props);}}},
         Config: {PACKAGE_VERSION: version},
+        Meta: {KeyBindingFlags: {NONE: 0, IGNORE_AUTOREPEAT: 16}},
+        Shell: {ActionMode: {NORMAL: 1}},
         Extension: class {}, Main: {
             notify: (...args) => notices.push(args),
+            wm: {
+                removeKeybinding: key => bindings.delete(key),
+                addKeybinding: (key, settings, flags, modes, handler) => bindings.set(key, {flags, handler}),
+            },
             osdWindowManager: {
                 showAll: (...args) => osds.push(['showAll', ...args]),
                 show: (...args) => osds.push(['show', ...args]),
@@ -37,14 +44,15 @@ function menuFixture(version = '50.0') {
     const open = {id: 'open', config: ['Open']};
     Object.assign(menu, {
         _cancellable: cancellable, _context: null, _handledContext: false, _retryCount: 0,
-        _isApplyingConfig: false, _pendingProfile: null,
+        _isApplyingConfig: false, _pendingProfile: null, _requestedProfile: null,
+        _settings: {get_boolean: () => true},
         _store: {profiles: [closed, open], last: {}, enrich() {}, remember(key, id) {this.last[key] = id;}},
-        _displayConfigSwitcher: {getPhysicalDisplayInfo: () => [], getLidState: () => key, applyProfile: async () => {}},
+        _displayConfigSwitcher: {getPhysicalDisplayInfo: () => [], getLidState: () => key, applyProfile: async () => {}, requestStateUpdate() {}},
         _getContext: () => key,
         _updateMenu() {this._currentConfigs = key === 'closed' ? [closed] : [open];},
         _isActive: () => false,
     });
-    return {menu, closed, open, notices, osds, setContext(value) {key = value;}};
+    return {menu, closed, open, notices, osds, bindings, setContext(value) {key = value;}};
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {let resolve; const promise = new Promise(r => {resolve = r;}); return {promise, resolve};};
@@ -75,6 +83,8 @@ test('manual selection during automatic apply is queued and wins', async () => {
     menu._onStateChanged();
     await menu._onConfig(open);
     pending.resolve(); await tick();
+    assert.deepEqual(calls, ['closed']);
+    menu._onStateChanged(); await tick();
     assert.deepEqual(calls, ['closed', 'open']);
     assert.equal(menu._store.last.closed, 'open');
 });
@@ -161,4 +171,120 @@ test('cancellation during switch does not display an OSD or access released sett
     pending.resolve();
     await apply;
     assert.equal(osds.length, 0);
+});
+
+
+test('shortcut registration suppresses keyboard autorepeat', () => {
+    const {menu, bindings} = menuFixture();
+    menu._updateKeyBindings();
+    assert.equal(bindings.size, 2);
+    for (const binding of bindings.values())
+        assert.ok(binding.flags & 16, 'Holding a shortcut must not generate repeated display switches');
+});
+
+test('two shortcut presses queue successive profiles and wait for refreshed state', async () => {
+    const {menu, closed, open, bindings} = menuFixture();
+    const both = {id: 'both', config: ['Both']};
+    menu._store.profiles.push(both);
+    menu._context = 'closed';
+    menu._handledContext = true;
+    menu._currentConfigs = [closed, open, both];
+    menu._activeConfig = closed;
+    menu._updateMenu = () => {};
+    const first = deferred();
+    const calls = [];
+    menu._displayConfigSwitcher.applyProfile = profile => {
+        calls.push(profile.id);
+        return calls.length === 1 ? first.promise : Promise.resolve();
+    };
+    menu._updateKeyBindings();
+    const next = bindings.get('display-configuration-switcher-shortcut-next').handler;
+    next();
+    next();
+    assert.deepEqual(calls, ['open']);
+    first.resolve();
+    await tick();
+    assert.deepEqual(calls, ['open'], 'A method reply is not the refreshed monitor state');
+    menu._activeConfig = open;
+    menu._onStateChanged();
+    await tick();
+    assert.deepEqual(calls, ['open', 'both'], 'The second press advances from the first requested profile');
+});
+
+test('shortcut after apply reply still waits for state publication', async () => {
+    const {menu, closed, open, bindings} = menuFixture();
+    const both = {id: 'both', config: ['Both']};
+    menu._store.profiles.push(both);
+    menu._context = 'closed';
+    menu._handledContext = true;
+    menu._currentConfigs = [closed, open, both];
+    menu._activeConfig = closed;
+    menu._updateMenu = () => {};
+    const calls = [];
+    menu._displayConfigSwitcher.applyProfile = async profile => {calls.push(profile.id);};
+    menu._updateKeyBindings();
+    const next = bindings.get('display-configuration-switcher-shortcut-next').handler;
+    next();
+    await tick();
+    next();
+    await tick();
+    assert.deepEqual(calls, ['open'], 'Do not dispatch another modeset before state publication');
+    menu._activeConfig = open;
+    menu._onStateChanged();
+    await tick();
+    assert.deepEqual(calls, ['open', 'both']);
+});
+
+test('rapid shortcut cycling follows the latest queued target', async () => {
+    const {menu, closed, open, bindings} = menuFixture();
+    const both = {id: 'both', config: ['Both']};
+    menu._store.profiles.push(both);
+    menu._context = 'closed';
+    menu._handledContext = true;
+    menu._currentConfigs = [closed, open, both];
+    menu._activeConfig = closed;
+    menu._updateMenu = () => {};
+    const first = deferred();
+    const calls = [];
+    menu._displayConfigSwitcher.applyProfile = profile => {
+        calls.push(profile.id);
+        return calls.length === 1 ? first.promise : Promise.resolve();
+    };
+    menu._updateKeyBindings();
+    const next = bindings.get('display-configuration-switcher-shortcut-next').handler;
+    next(); next(); next();
+    assert.deepEqual(calls, ['open']);
+    first.resolve(); await tick();
+    menu._activeConfig = open;
+    menu._onStateChanged(); await tick();
+    assert.deepEqual(calls, ['open', 'closed'], 'Three presses cycle back; only the final queued target is applied');
+});
+
+test('queued selection requests a new state read after a missed publication', async () => {
+    const {menu, closed, open} = menuFixture();
+    menu._context = 'closed';
+    let refreshes = 0;
+    const calls = [];
+    menu._displayConfigSwitcher.requestStateUpdate = () => {refreshes++;};
+    menu._displayConfigSwitcher.applyProfile = async profile => {calls.push(profile.id);};
+    await menu._onConfig(closed);
+    await menu._onConfig(open);
+    assert.equal(refreshes, 1, 'A later user selection must retry the read rather than remain stuck');
+    assert.deepEqual(calls, ['closed']);
+    menu._onStateChanged(); await tick();
+    assert.deepEqual(calls, ['closed', 'open']);
+});
+
+test('state publication drops queued selections for an old hardware context', async () => {
+    const {menu, closed, open, setContext} = menuFixture();
+    menu._context = 'closed';
+    menu._handledContext = true;
+    const calls = [];
+    menu._displayConfigSwitcher.applyProfile = async profile => {calls.push(profile.id);};
+    await menu._onConfig(closed);
+    await menu._onConfig(closed);
+    setContext('open');
+    menu._onStateChanged(); await tick();
+    assert.deepEqual(calls, ['closed', 'open']);
+    assert.equal(menu._store.last.open, 'open');
 });
