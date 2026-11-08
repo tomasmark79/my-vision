@@ -58,6 +58,62 @@ screen is fixed solely because direct profile-application probes passed.
   all failures. Do not claim the shortcut queue fix resolves the physical failure
   until the actual key path is tested; no post-patch visual result yet.
 
+## Latest status (09:37)
+
+- User confirmed the live shortcut fix still fails repeatedly. It is NOT a fix
+  for the physical display failure. Do not keep targeting key bindings.
+- Disabled My Vision again at about 09:29 to prevent automatic restoration after
+  USB-C recovery. Currently INACTIVE; do not assume it has been re-enabled.
+- Earlier normal-exec recorder disappeared at 09:20:45, without a stop record.
+  Its trace is incomplete after that point. Started a durable passive recorder
+  via user systemd unit `my-vision-display-capture-0927.service` at 09:26:32,
+  duration 3600s. Evidence directory and `latest`:
+  `/home/tomas/.local/state/my-vision/diagnostics/20261108-092632-951249/`.
+- At 09:27:41.385 a singleton external-144-VRR Apply returned at 09:27:41.400;
+  first actual kernel blank error timestamp is 09:27:41.711. No second Apply
+  precedes that error. The next Apply is recovery at 09:27:58.
+- Canonical D-Bus request bodies (omitting only monitor state serial) match the
+  earlier successful probes exactly: external VRR `e075d9bf9f`, built-in VRR
+  `51ae3334c3`; SHA256 prefixes computed over dbus-monitor body lines. Malformed
+  request data has not been demonstrated. This does not exclude side effects
+  of the surrounding Shell extension code or differences in desktop/GPU state.
+- At 09:27:58 kernel reported invalid EDID checksum. At 09:30 external DP-2 had
+  zero-byte sysfs EDID and Mutter exposed only unknown/unknown/unknown with
+  640x480@59.940. Saved `unknown-monitor-state.jsonl` and
+  `unknown-monitor-edid.json` in latest evidence directory. This is a later
+  failure/recovery state, not evidence that EDID corruption caused the first hang.
+- User power-cycled monitor and reconnected; identity recovered to Gigabyte M32U
+  with 384-byte EDID, all three checksums zero, SHA256
+  `9e95b249da133e2151f5ddd4d33219a2b8f0335f06cca90b5dd574b80e865106`.
+  Native external-only state then was 3840x2160@143.999 FIXED, scale 1.5.
+  User wants focus back on extension; do not pursue EDID as the main issue.
+- Official GNOME 50.5 sources saved under `native-sources/` in latest directory.
+  Win+P closes switcher then calls `monitorManager.switch_config`; Mutter queues
+  idle callback and generates config before temporary apply. Our extension uses
+  explicit ApplyMonitorsConfig with exact saved modes/properties. Both eventually
+  reach `meta_monitor_manager_apply_monitors_config`; native Win+P is not an
+  equivalent exact-profile test. Do not change API merely based on this difference.
+- Important isolation gap: initial fixed-refresh failure still had native OSD;
+  successful no-OSD+fixed-refresh probes precede restored VRR and reboot.
+  Current native fixed-144 state differed from saved external +vrr profile.
+  Neither VRR alone nor OSD alone has been proven to explain all failures.
+- Under existing user authorization for no-VRR profile test, prepared current
+  no-OSD version with exact fixed-refresh counterparts of the two open-lid,
+  external-connected profiles. IDs, other profiles and legacy settings preserved;
+  exact frequency/resolution/scale checked against current live Mutter modes.
+  Script `test-fixed-refresh-without-osd.mjs` and original/applied backup JSONs
+  (`profiles-v2-before-vrr-test.json`, `profiles-v2-without-vrr-test.json`) are in
+  latest evidence directory. This changed profiles only, no display apply.
+  Restore command: `gjs -m <latest-dir>/test-fixed-refresh-without-osd.mjs restore`;
+  script refuses to overwrite subsequently edited test profiles.
+- Do NOT auto-enable based on earlier external-only state: a read at 09:36 found
+  actual native state built-in-only fixed120, while remembered profile remained
+  external-only. Re-enabling would actively switch the display. My Vision remains
+  disabled and further actual desktop switching needs coordination with the user.
+- User rejects treating unit-test PASS or automated probes as physical verification.
+  Existing regression tests validate separate queue defects only. No verified
+  root-cause code fix for the physical gray screen exists yet.
+
 ## Confirmed reproduction (2026-11-08, Europe/Prague)
 
 - User confirmed the gray screen and had to unplug USB-C to recover the laptop.
