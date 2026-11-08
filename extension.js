@@ -111,6 +111,8 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 return;
             const pending = this._pendingOsd;
             this._pendingOsd = null;
+            if (!this._settings.get_boolean('show-profile-osd'))
+                return;
             const profile = this._store.profiles.find(p => p.id === pending.id);
             if (pending.context !== this._getContext() || !profile || !this._isActive(profile))
                 return;

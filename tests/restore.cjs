@@ -161,6 +161,30 @@ for (const version of ['46.0', '47.0', '48.0', '49.0', '50.0']) {
     });
 }
 
+test('OSD can be disabled during a switch and enabled again without changing profile application', async () => {
+    const { menu, closed, open, osds } = menuFixture();
+    menu._context = 'closed';
+    menu._handledContext = true;
+    let showOsd = true;
+    let applies = 0;
+    menu._settings.get_boolean = key => key === 'show-profile-osd' ? showOsd : true;
+    menu._displayConfigSwitcher.applyProfile = async () => { applies++; };
+    menu._isActive = () => true;
+    await menu._onConfig(closed);
+    showOsd = false;
+    menu._onStateChanged();
+    assert.equal(osds.length, 0, 'Read the current preference before showing a confirmed OSD');
+    assert.equal(menu._store.last.closed, closed.id, 'Disabling OSD must not affect remembered selections');
+    showOsd = true;
+    menu._onStateChanged();
+    assert.equal(osds.length, 0, 'Re-enabling must not replay a suppressed OSD');
+    await menu._onConfig(open);
+    menu._onStateChanged();
+    assert.equal(applies, 2);
+    assert.equal(osds.length, 1);
+    assert.equal(osds[0][2], 'Open');
+});
+
 test('a queued switch after the reply suppresses the intermediate profile OSD', async () => {
     const { menu, closed, open, osds } = menuFixture();
     menu._context = 'closed';

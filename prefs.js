@@ -89,6 +89,7 @@ export default class MyVisionPreferences extends ExtensionPreferences {
         // Add the Config Page
         const configPage = this.#builder.get_object('configPage');
         window.add(configPage);
+        this.#settings.bind('show-profile-osd', this.#builder.get_object('profileOsdSwitch'), 'active', Gio.SettingsBindFlags.DEFAULT);
         this.#builder.get_object('exportProfilesButton').connect('clicked', () => this.#transferProfiles(false));
         this.#builder.get_object('importProfilesButton').connect('clicked', () => this.#transferProfiles(true));
 

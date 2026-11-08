@@ -7,6 +7,19 @@ Adw.PreferencesPage configPage {
     icon-name: "video-display-symbolic";
 
     Adw.PreferencesGroup {
+        title: _("On-screen Display");
+        Adw.ActionRow {
+            title: _("Show Profile OSD");
+            subtitle: _("Display the profile name after switching monitors.");
+            activatable-widget: profileOsdSwitch;
+            [suffix]
+            Switch profileOsdSwitch {
+                valign: center;
+            }
+        }
+    }
+
+    Adw.PreferencesGroup {
         title: _("Saved Configurations");
         description: _("Rename, reorder or remove profiles. Open profile details to see monitor settings and availability.");
 

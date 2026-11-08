@@ -76,6 +76,14 @@ Gtk.FileDialog.prototype.open = async () => file;
 Gtk.FileDialog.prototype.save = async () => file;
 
 const first = makeWindow();
+const osdRow = widgets(first.window).find(w => w instanceof Adw.ActionRow && w.title === 'Show Profile OSD');
+assert(osdRow, 'Preferences must offer an OSD toggle');
+const osdSwitch = widgets(osdRow).find(w => w instanceof Gtk.Switch);
+assert(osdSwitch.active, 'OSD stays enabled by default');
+osdSwitch.active = false;
+assert(!settings.get_boolean('show-profile-osd'), 'OSD toggle must persist its setting');
+settings.set_boolean('show-profile-osd', true);
+assert(osdSwitch.active, 'OSD toggle must reflect external setting changes');
 await until(() => widgets(first.window).some(w => w instanceof Adw.EntryRow && w.title.includes('Available for')));
 let row = widgets(first.window).find(w => w instanceof Adw.EntryRow && w.text === 'External');
 assert(row.infoLabel.label.includes('3840 × 2160 · 120 Hz') && row.infoLabel.label.includes('150%'), 'Preferences must expose readable saved monitor settings');

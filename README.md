@@ -234,6 +234,9 @@ Profile switches display the profile name in GNOME's native OSD on all active
 monitors after refreshed display state confirms the selection. Queued switches
 skip intermediate labels; failed or cancelled requests do not show a success OSD.
 The active profile is also shown in Quick Settings.
+In Preferences → Configurations → On-screen Display, **Show Profile OSD** turns
+these profile labels on or off. It is enabled by default; changes apply to the
+next OSD without restarting the extension and do not affect profile switching.
 
 An investigation on AMD Phoenix with a Gigabyte M32U reproduced
 gray output at 4K/144 Hz through an independent Mutter client with My Vision

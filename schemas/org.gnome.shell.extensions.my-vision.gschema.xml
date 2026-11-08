@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="org.gnome.shell.extensions.my-vision" path="/org/gnome/shell/extensions/my-vision/">
+    <key name="show-profile-osd" type="b">
+      <default>true</default>
+      <summary>Show the profile name on screen after switching displays.</summary>
+    </key>
     <key name="profiles-v2" type="s">
       <default>''</default>
       <summary>Versioned profiles, lid conditions and selections by hardware context.</summary>
