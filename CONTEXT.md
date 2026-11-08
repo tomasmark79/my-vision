@@ -112,10 +112,11 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
   toggle's `_onConfig()`. Logs use `[My Vision probe]`. It restores the original
   OSD method and proxy timeout afterward unless the owner was cancelled.
   `start(true)` is supported for a subsequent comparison with OSD enabled.
-  User executed the command; the Shell probe started at 08:50:09. The first
-  fourteen mixed steps passed with explicit `OSD suppressed` messages and no
-  new AMD errors. Await completion and physical confirmation, then compare with
-  `start(true)` before declaring OSD the cause.
+  User executed the command; the Shell probe started at 08:50:09 and completed
+  all 20 mixed steps at 08:51:15, with explicit `OSD suppressed` messages and no
+  new AMD errors. User confirmed no visible failure. Asked user to run
+  `start(true)` to compare the same sequence with native OSD restored before
+  declaring OSD the cause. The helper restores original OSD after each run.
   The initial recorder expired at about 08:49; started a new 1800-second capture
   at `/home/tomas/.local/state/my-vision/diagnostics/20261108-085034-326389/`.
   `latest` now points there. Backfilled the initial probe journal events into
@@ -142,5 +143,5 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
   filtering improvements retain USB disconnections and exclude unrelated services.
   The current recording still uses the initial filter; leave it running to avoid
   losing events during the physical test.
-- Pending: controlled PSR comparison and any resulting fix. No build,
+- Pending: controlled OSD-enabled comparison and any resulting fix. No build,
   installation, session reload or publication.
