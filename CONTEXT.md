@@ -6,7 +6,27 @@ The current source patch fixes verified shortcut autorepeat/queue defects. Physi
 verification through the actual shortcut is still required; do not claim the gray
 screen is fixed solely because direct profile-application probes passed.
 
-## Current instruction and handoff (09:56)
+## Current kernel comparison (11:26)
+
+- User completed the Nixon build and rebooted themselves. Verified running
+  Linux `7.4.0-rc1`, GNOME Shell 50.5, selected generation 1406. Generation
+  1405 with Linux 7.3.1 remains available in the boot menu.
+- Kernel-only configuration is committed in Nixon as `94e6947`. Kernel
+  preparation is complete; physical gray-screen diagnosis continues here.
+- My Vision is ACTIVE. All seven installed JavaScript modules match this repo.
+  Open-lid external-connected test profiles still use fixed 144/120 Hz modes.
+  Other hardware/lid contexts were not changed. External Gigabyte identity is
+  correct and current external mode is 3840x2160@143.999, without VRR.
+- Started passive user unit `my-vision-kernel74-capture.service` at 11:26:03,
+  maximum duration 3600 seconds. Evidence directory:
+  `/home/tomas/.local/state/my-vision/diagnostics/20261108-112603-754397/`.
+  Initial collectors are healthy, no previous AMD blank/flip/commit timeout
+  signatures in this boot before testing. No display writes or automatic
+  recovery are performed. My Vision must stay enabled even after a failure.
+- Await user testing through normal shortcuts, including Both. No physical
+  comparison result on the new kernel yet; do not claim the issue is fixed.
+
+## Previous kernel reproduction and recovery limits (09:56)
 
 - User tested current no-OSD/no-VRR version: two switches worked, third gray.
   Therefore no-VRR is NOT a verified fix. User explicitly wants VRR left off.
@@ -38,12 +58,6 @@ screen is fixed solely because direct profile-application probes passed.
   DP-2 force `unspecified`; current native logical config external-only.
   Removed all automatic recovery/disable actions from private observe-desktop.py;
   it now logs physical recovery is required. Do not resume automated switching.
-- User's next requested step: prepare kernel 7.4 RC in Nixon for next boot,
-  keeping current extension and no-VRR profiles unchanged. User will reboot
-  themselves, then continue testing. No agent reboot/logout.
-  Owning repo `/home/tomas/.config/nixon`; its AGENTS.md read. Both pinned stable
-  and unstable `linuxPackages_testing` still resolve to 7.3.1. Investigating a
-  kernel-only updated source so GNOME/userspace remain pinned for comparison.
 
 ## Current work after restart (09:05 onward)
 
