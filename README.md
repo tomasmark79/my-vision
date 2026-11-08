@@ -189,11 +189,14 @@ Use the development environment above if Blueprint or GLib build tools are missi
 After installing changed JavaScript, start a fresh GNOME session.
 
 Profile switches do not display a native GNOME OSD; the active profile is shown
-in Quick Settings. During an intermittent AMD display-hang investigation, a
-20-switch sequence passed with OSD suppressed and failed with it enabled.
-However, switching through a keyboard shortcut after a fresh boot also failed
-without OSD. OSD removal alone is therefore not a complete fix. Successful tests
-that call profile application directly do not verify the keyboard shortcut path.
+in Quick Settings. An investigation on AMD Phoenix with a Gigabyte M32U reproduced
+gray output at 4K/144 Hz through an independent Mutter client with My Vision
+disabled. OSD removal and menu suppression did not fully prevent the failure.
+The 4K/120 Hz mode passed both scripted and manual shortcut checks on that
+system; this is a workaround, not a confirmed fix for 144 Hz.
+My Vision does not silently lower a profile's refresh rate. See the
+[diagnosis and its limitations](docs/display-switching-diagnosis.md) before
+attributing similar symptoms to an extension, Mutter, or a driver.
 
 If a profile is unavailable, check that the connected monitor set and lid state
 match its saved context. Ambiguous monitor identities are deliberately refused.
