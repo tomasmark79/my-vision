@@ -21,6 +21,7 @@ import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
+import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
@@ -43,6 +44,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             this._retryCount = 0;
             this._pendingProfile = null;
             this._requestedProfile = null;
+            this._pendingOsd = null;
             this._currentConfigs = [];
             this._activeConfig = null;
             this._nameDialog = new NameDialog();
@@ -96,11 +98,30 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                     }
                 }
             }
+            this._showPendingOsd();
             if (key === null || this._isApplyingConfig || this._handledContext || this._currentConfigs.length === 0)
                 return;
             const profile = selectProfile(this._currentConfigs, this._store.last[key],
                 this._store.legacyId, this._displayConfigSwitcher.getLidState(), p => this._isActive(p));
             this._onConfig(profile, true);
+        }
+
+        _showPendingOsd() {
+            if (this._isApplyingConfig || this._pendingOsd === null)
+                return;
+            const pending = this._pendingOsd;
+            this._pendingOsd = null;
+            const profile = this._store.profiles.find(p => p.id === pending.id);
+            if (pending.context !== this._getContext() || !profile || !this._isActive(profile))
+                return;
+
+            // Use the refreshed topology, after queued selections have been handled.
+            const icon = new Gio.ThemedIcon({name: 'video-display-symbolic'});
+            // GNOME 49 changed show(); 46–48 use index -1 for all active monitors.
+            if (Number.parseInt(Config.PACKAGE_VERSION, 10) >= 49)
+                Main.osdWindowManager.showAll(icon, profile.config[0], null);
+            else
+                Main.osdWindowManager.show(-1, icon, profile.config[0], null);
         }
 
         _isActive(profile) {
@@ -175,6 +196,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             if (key === null)
                 return;
             const cancellable = this._cancellable;
+            this._pendingOsd = null;
             this._requestedProfile = {id: profile.id, context: key};
             this._handledContext = true;
             this._isApplyingConfig = true;
@@ -184,6 +206,8 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
                 if (this._getContext() === key &&
                     this._store.profiles.some(p => p.id === profile.id)) {
                     this._store.remember(key, profile.id);
+                    if (this._pendingProfile === null)
+                        this._pendingOsd = {id: profile.id, context: key};
                 }
             } catch (error) {
                 if (!cancellable.is_cancelled() && !isCancelled(error)) {
@@ -273,6 +297,7 @@ const DisplayConfigQuickMenuToggle = GObject.registerClass(
             this._nameDialog = null;
             this._pendingProfile = null;
             this._requestedProfile = null;
+            this._pendingOsd = null;
             this._currentConfigs = [];
             this._activeConfig = null;
             this._store = null;

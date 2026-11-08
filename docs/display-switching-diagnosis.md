@@ -1,8 +1,9 @@
 # Gray display during monitor switching
 
 Updated 2026-11-08. This records one hardware-specific investigation, not a
-general assertion about all AMD or GNOME systems. The user chose to keep the
-working 120 Hz profiles and continue source research without further crash tests.
+general assertion about all AMD or GNOME systems. After the source review, the
+user chose to close this investigation with the working 120 Hz profiles and
+restore native profile OSD feedback. No further crash tests are planned.
 
 ## Established result
 
@@ -47,7 +48,11 @@ local CET; JSON request timestamps use UTC. Use the kernel journal's own
 The 26 requests are not a count of physical key presses. These finite successful
 tests establish a useful workaround, not indefinite reliability. Earlier GNOME
 settings/Win+P comparisons that reverted the monitor to 60 Hz were not equivalent
-144 Hz controls.
+144 Hz controls. The user also reports that explicitly selecting 144 Hz in
+GNOME Settings → Displays works. That shows that the mode can operate; it does
+not establish that a profile's preceding state and complete transition match
+that settings-panel action. A shared Mutter API is not proof of identical
+payloads, application method, timing, or monitor enable/disable sequence.
 
 Failures included `dcn20_wait_for_blank_complete: DC: failed to blank crtc!`,
 followed by flip/commit timeouts. The errors locate the observed stall in the
@@ -107,10 +112,16 @@ The evidence directory contains `profiles-before-120hz-test.json`,
 operation refuses to overwrite subsequently changed profile configurations.
 Do not restore them under the current instruction to keep 120 Hz.
 
-My Vision remains enabled for normal use and recovery. No new production
-extension patch, kernel patch, installation, or activation resulted from this
-source-research phase. Further work can inspect the saved mode timings, compare
-Mutter transaction construction and DCN314 ODM/DSC code, and prepare an upstream
-report. An actual fix still requires identifying the defective transition;
-additional disruptive tests need a new agreement with the user. Do not treat
-timeout messages or a similarly titled upstream patch as sufficient diagnosis.
+My Vision remains enabled for normal use and recovery. The source-research phase
+produced no kernel or extension fix for the 144 Hz fault. At the user's request,
+native OSD feedback was subsequently restored: it waits for refreshed state to
+confirm the requested profile, skips intermediate queued selections, and drops
+stale or cancelled work. GNOME 46–48 use `show(-1, ...)`; 49–50 use `showAll(...)`,
+following the [GNOME 49 API change](https://gjs.guide/extensions/upgrading/gnome-shell-49.html#osdwindowmanager).
+Shell owns the native OSD actors and hide timers; the extension adds no OSD timer
+or monitor signal connection and releases its pending label during destruction.
+
+This closes the investigation with a workaround, not a 144 Hz repair. If reopened,
+compare saved mode timings, Mutter transaction construction and DCN314 ODM/DSC
+handling. Additional disruptive tests need a new agreement with the user. Do not
+treat timeout messages or a similarly titled upstream patch as sufficient diagnosis.

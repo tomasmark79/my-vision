@@ -188,8 +188,12 @@ Also test rapid lid changes and disabling the extension during a switch.
 Use the development environment above if Blueprint or GLib build tools are missing.
 After installing changed JavaScript, start a fresh GNOME session.
 
-Profile switches do not display a native GNOME OSD; the active profile is shown
-in Quick Settings. An investigation on AMD Phoenix with a Gigabyte M32U reproduced
+Profile switches display the profile name in GNOME's native OSD on all active
+monitors after refreshed display state confirms the selection. Queued switches
+skip intermediate labels; failed or cancelled requests do not show a success OSD.
+The active profile is also shown in Quick Settings.
+
+An investigation on AMD Phoenix with a Gigabyte M32U reproduced
 gray output at 4K/144 Hz through an independent Mutter client with My Vision
 disabled. OSD removal and menu suppression did not fully prevent the failure.
 The 4K/120 Hz mode passed both scripted and manual shortcut checks on that

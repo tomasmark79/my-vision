@@ -5,6 +5,10 @@ kernel sources only. It does not change display configuration, firmware, kernel
 parameters, or profiles. Keep the working 120 Hz configuration; further crash
 reproduction is not authorized.
 
+After this review, the user chose to stop the investigation, keep 120 Hz and
+restore profile OSD feedback. The research directions below are for a possible
+future investigation, not ongoing authorized testing.
+
 ## Scope and conclusion
 
 The reported system is AMD Phoenix `1002:15bf`, DCN 3.1.4, DMUB `0x08006500`,

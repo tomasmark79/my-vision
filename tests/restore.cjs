@@ -18,7 +18,7 @@ function menuFixture(version = '50.0') {
         set_error_if_cancelled() {if (this.cancelled) throw new Cancelled();},
     };
     const context = vm.createContext({
-        GObject: {registerClass: klass => klass}, QuickSettings: {QuickMenuToggle: class {}},
+        GObject: {registerClass: klass => klass}, QuickSettings: {QuickMenuToggle: class {destroy() {}}},
         isCancelled: error => error instanceof Cancelled,
         Gio: {ThemedIcon: class {constructor(props) {Object.assign(this, props);}}},
         Config: {PACKAGE_VERSION: version},
@@ -44,7 +44,7 @@ function menuFixture(version = '50.0') {
     const open = {id: 'open', config: ['Open']};
     Object.assign(menu, {
         _cancellable: cancellable, _context: null, _handledContext: false, _retryCount: 0,
-        _isApplyingConfig: false, _pendingProfile: null, _requestedProfile: null,
+        _isApplyingConfig: false, _pendingProfile: null, _requestedProfile: null, _pendingOsd: null,
         _settings: {get_boolean: () => true},
         _store: {profiles: [closed, open], last: {}, enrich() {}, remember(key, id) {this.last[key] = id;}},
         _displayConfigSwitcher: {getPhysicalDisplayInfo: () => [], getLidState: () => key, applyProfile: async () => {}, requestStateUpdate() {}},
@@ -123,10 +123,9 @@ test('cancellation while saving cannot access released settings or UI', async ()
     assert.equal(notices.length, 0);
 });
 
-// Live A/B testing isolated the native OSD as the display-hang trigger. These
-// checks prevent reintroducing that side effect; hardware verification is separate.
+// Exercise the real switch/state-publication path without changing live displays.
 for (const version of ['46.0', '47.0', '48.0', '49.0', '50.0']) {
-    test(`GNOME ${version}: mixed profile switches never display an OSD`, async () => {
+    test(`GNOME ${version}: show each confirmed profile once on all active monitors`, async () => {
         const {menu, closed, open, osds} = menuFixture(version);
         const both = {id: 'both', config: ['Both']};
         menu._store.profiles.push(both);
@@ -140,13 +139,66 @@ for (const version of ['46.0', '47.0', '48.0', '49.0', '50.0']) {
         const order = [0, 1, 0, 1, 2, 1, 0, 1, 2, 0, 1, 0, 2, 1, 2, 1, 2, 0, 2, 0];
         for (const index of order) {
             const profile = profiles[index];
+            const previous = osds.length;
             await menu._onConfig(profile);
+            assert.equal(osds.length, previous, 'A method reply alone must not display an OSD');
             menu._onStateChanged();
             assert.equal(menu._store.last.closed, profile.id, 'The selection must still be remembered');
-            assert.equal(osds.length, 0, 'A confirmed switch must not trigger native OSD composition');
+            assert.equal(osds.length, previous + 1);
+            const [method, ...args] = osds.at(-1);
+            if (['46.0', '47.0', '48.0'].includes(version)) {
+                assert.equal(method, 'show');
+                assert.equal(args.shift(), -1, 'Legacy API uses -1 for all monitors');
+            } else {
+                assert.equal(method, 'showAll');
+            }
+            assert.equal(args[0].name, 'video-display-symbolic');
+            assert.equal(args[1], profile.config[0]);
+            assert.equal(args[2], null, 'Profile OSD has no level bar');
+            menu._onStateChanged();
+            assert.equal(osds.length, previous + 1, 'Repeated state signals must not repeat the OSD');
         }
     });
 }
+
+test('a queued switch after the reply suppresses the intermediate profile OSD', async () => {
+    const {menu, closed, open, osds} = menuFixture();
+    menu._context = 'closed';
+    menu._isActive = () => true;
+    await menu._onConfig(closed);
+    await menu._onConfig(open);
+    menu._onStateChanged();
+    await tick();
+    assert.equal(osds.length, 0, 'The superseded profile must not flash before the queued switch');
+    menu._onStateChanged();
+    assert.equal(osds.length, 1);
+    assert.equal(osds[0][2], 'Open');
+});
+
+for (const change of ['context', 'deleted', 'inactive']) {
+    test(`discard an unconfirmed OSD after a ${change} change`, async () => {
+        const {menu, closed, osds, setContext} = menuFixture();
+        menu._context = 'closed';
+        menu._isActive = () => change !== 'inactive';
+        await menu._onConfig(closed);
+        if (change === 'context') setContext('open');
+        if (change === 'deleted') menu._store.profiles = [];
+        menu._onStateChanged();
+        await tick();
+        assert.equal(osds.length, 0);
+    });
+}
+
+test('OSD uses the current profile name when renamed before confirmation', async () => {
+    const {menu, closed, osds} = menuFixture();
+    menu._context = 'closed';
+    menu._isActive = () => true;
+    await menu._onConfig(closed);
+    closed.config[0] = 'Renamed';
+    menu._onStateChanged();
+    assert.equal(osds.length, 1);
+    assert.equal(osds[0][2], 'Renamed');
+});
 
 test('failed switches keep the remembered selection and report the failure', async () => {
     const {menu, closed, osds, notices} = menuFixture();
@@ -172,6 +224,29 @@ test('cancellation during switch does not display an OSD or access released sett
     await apply;
     assert.equal(osds.length, 0);
 });
+
+for (const completed of [false, true]) {
+    test(`destroy ${completed ? 'after' : 'before'} the apply reply releases pending OSD work`, async () => {
+        const {menu, closed, osds} = menuFixture();
+        const pending = deferred();
+        menu._displayConfigSwitcher.applyProfile = () => pending.promise;
+        menu._displayConfigSwitcher.destroy = () => {};
+        menu._settings.disconnect = () => {};
+        menu._dialogHandlerId = null;
+        menu._nameDialog = {destroy() {}};
+        const apply = menu._onConfig(closed);
+        if (completed) {
+            pending.resolve();
+            await apply;
+        }
+        menu.destroy();
+        pending.resolve();
+        await apply;
+        assert.equal(menu._pendingOsd, null);
+        assert.equal(menu._store, null);
+        assert.equal(osds.length, 0);
+    });
+}
 
 
 test('shortcut registration suppresses keyboard autorepeat', () => {
