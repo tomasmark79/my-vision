@@ -11,15 +11,21 @@ template $ConfigRow : Adw.EntryRow {
     [suffix]
     MenuButton {
         icon-name: "dialog-information-symbolic";
-        tooltip-text: _("Debug Info");
+        tooltip-text: _("Profile Details");
         valign: center;
         direction: left;
         popover: Popover {
             ScrolledWindow {
                 propagate-natural-height: true;
                 propagate-natural-width: true;
+                max-content-width: 480;
+                max-content-height: 480;
                 Label infoLabel {
                     selectable: true;
+                    use-markup: false;
+                    wrap: true;
+                    max-width-chars: 56;
+                    xalign: 0;
                 }
             }
         };

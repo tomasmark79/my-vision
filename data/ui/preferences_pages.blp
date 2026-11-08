@@ -8,11 +8,37 @@ Adw.PreferencesPage configPage {
 
     Adw.PreferencesGroup {
         title: _("Saved Configurations");
-        description: _("Rename or remove the saved display configurations.");
+        description: _("Rename, reorder or remove profiles. Open profile details to see monitor settings and availability.");
 
         ListBox configListbox {
             selection-mode: none;
             styles ["boxed-list"]
+        }
+    }
+
+    Adw.PreferencesGroup {
+        title: _("Profile Backups");
+        description: _("Import adds profiles without replacing existing ones. Identical profiles are skipped. Importing does not switch displays.");
+
+        Adw.ActionRow {
+            title: _("Export Profiles");
+            subtitle: _("Save all profiles to a JSON file.");
+            activatable-widget: exportProfilesButton;
+            [suffix]
+            Button exportProfilesButton {
+                label: _("Export…");
+                valign: center;
+            }
+        }
+        Adw.ActionRow {
+            title: _("Import Profiles");
+            subtitle: _("Restore profiles from a My Vision backup.");
+            activatable-widget: importProfilesButton;
+            [suffix]
+            Button importProfilesButton {
+                label: _("Import…");
+                valign: center;
+            }
         }
     }
 }

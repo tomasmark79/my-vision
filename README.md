@@ -18,6 +18,8 @@ monitor identities and laptop lid conditions.
 - Keyboard shortcuts support for fast profile switching
 - Profiles are bound to physical monitor identities (not port order)
 - Drag & drop reordering of saved configurations
+- Live availability explanations and readable per-monitor profile details
+- Export and import profile backups without replacing existing profiles
 - Quick access from the GNOME Quick Settings menu
 
 ## Requirements
@@ -109,6 +111,36 @@ Renaming/reordering profiles does not change remembered selections. Deleting a
 profile removes references to its ID. Changing a lid condition is refused if it
 would introduce an exact duplicate.
 
+### Profile details and backups
+
+Preferences shows whether each saved profile is available for the current
+monitor set and lid state. Unavailable profiles explain why: for example, a
+missing monitor, a different lid condition or an unsupported saved mode/scale.
+This uses the same validation as switching. Availability updates as monitors or
+the lid change, without discarding an unfinished rename.
+
+Open **Profile Details** (the information button) for each monitor's on/off state,
+resolution, refresh rate, scale, primary status and position. Disabled monitors
+remain visible because they are part of the saved hardware context. When hardware
+is disconnected, recognizable saved mode IDs still show their parameters; an
+opaque mode ID is shown as saved rather than guessed. These are the profile's
+saved settings, not a promise that the monitor is currently using them.
+
+In **Profile Backups**, choose **Export…** to save all profiles to a JSON file,
+or **Import…** to add profiles from a My Vision backup. The backup preserves
+profile order, IDs, monitor identities, lid conditions and all stored display
+properties. It does not include keyboard shortcuts or remembered selections.
+Import keeps existing profiles, their order and selections, skips identical
+profiles and assigns a new ID only when a different imported profile shares an
+existing ID. Profiles for disconnected hardware are retained but cannot be used
+until their exact hardware context and modes are available.
+
+The whole file is validated before any profiles are saved. Invalid or unsupported
+files leave settings unchanged. Backups are limited to 1 MiB and 1000 profiles.
+Import does not switch displays, lower refresh rates or change the legacy
+migration backups. To change a profile's monitor settings, configure them in
+GNOME Displays and save a new profile as usual.
+
 ## Development
 
 ```bash
@@ -146,7 +178,8 @@ The last selection for the current monitor set and lid state is restored after
 GNOME Shell finishes startup, and after the lid state or connected monitor set
 changes. Without a remembered selection, a matching lid-specific profile is
 preferred, followed by a usable legacy/shared profile. Display changes are
-coalesced for 500 ms. Own mode-setting events do not repeatedly restore a profile.
+coalesced into one main-loop callback without a fixed delay. Own mode-setting
+events do not repeatedly restore a profile.
 
 Before applying, the extension refreshes the lid and monitor state, remaps ports
 against that fresh state and verifies the saved mode/scale/color mode. It skips
@@ -166,8 +199,17 @@ glib-compile-schemas --strict schemas
 GSETTINGS_BACKEND=memory gjs -m tests/profiles.js
 gjs -m tests/display-config.js
 gjs -m tests/initialization.js
+gjs -m tests/profile-details.js
+gjs -m tests/profile-backup.js
+gjs -m tests/profile-files.js
 node --test tests/startup.cjs tests/restore.cjs
 ```
+
+After building, `bash tests/preferences.sh` exercises the real GTK preferences
+on an isolated Xvfb display with memory-only settings. It covers live status
+updates, file import/export, duplicate and invalid imports, and closing the
+window during asynchronous work. It requires Xvfb and unzip and never switches
+the desktop's monitors.
 
 An optional integration check reads the live lid/monitor state and checks legacy
 profiles without applying a configuration or writing settings:

@@ -26,12 +26,12 @@ import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/
 
 import { PrefsWidgets } from './prefs_widgets.js';
 import { ProfileStore, LID_STATES } from './profiles.js';
+import { DisplayConfigSwitcher, isCancelled } from './dbus.js';
+import { profileStatus, formatProfileDetails } from './profile-details.js';
+import { exportProfiles, mergeProfiles } from './profile-backup.js';
+import { readProfileBackup, writeProfileBackup } from './profile-files.js';
 
 const NAME_INDEX = 0;
-const HASH_INDEX = 1;
-const LOGICAL_MONITORS_INDEX = 2;
-const PROPERTIES_INDEX = 3;
-const PHYSICAL_DISPLAYS_INDEX = 4;
 
 export default class MyVisionPreferences extends ExtensionPreferences {
     /**
@@ -49,6 +49,9 @@ export default class MyVisionPreferences extends ExtensionPreferences {
     #configs = [];
     #store = null;
     #changedHandler = null;
+    #displayConfigSwitcher = null;
+    #profileRows = new Map();
+    #fileCancellable = null;
 
     /**
      * Root widget of the preferences window
@@ -86,6 +89,8 @@ export default class MyVisionPreferences extends ExtensionPreferences {
         // Add the Config Page
         const configPage = this.#builder.get_object('configPage');
         window.add(configPage);
+        this.#builder.get_object('exportProfilesButton').connect('clicked', () => this.#transferProfiles(false));
+        this.#builder.get_object('importProfilesButton').connect('clicked', () => this.#transferProfiles(true));
 
         // Add the Shortcut Page
         const shortcutPage = this.#builder.get_object('shortcutPage');
@@ -154,9 +159,16 @@ export default class MyVisionPreferences extends ExtensionPreferences {
 
         // Call handler for initial fill of config list
         this.#onConfigsChanged();
+        // Preferences observe monitors and lid state; they never apply a profile.
+        this.#displayConfigSwitcher = new DisplayConfigSwitcher(() => this.#updateProfileDetails());
 
         // Handle the close-request signal to drop all references
         window.connect('close-request', () => {
+            this.#fileCancellable?.cancel();
+            this.#fileCancellable = null;
+            this.#displayConfigSwitcher.destroy();
+            this.#displayConfigSwitcher = null;
+            this.#profileRows.clear();
             this.#settings.disconnect(this.#changedHandler);
             Gio.resources_unregister(resource);
             this.#store = null;
@@ -181,63 +193,9 @@ export default class MyVisionPreferences extends ExtensionPreferences {
         this.#store.save();
     }
 
-    #prettyPrintConfig(config) {
-        const hash = config[HASH_INDEX];
-        const logicalMonitors = config[LOGICAL_MONITORS_INDEX];
-        const properties = config[PROPERTIES_INDEX];
-        const physicalDisplays = config[PHYSICAL_DISPLAYS_INDEX];
-        let res = '';
-
-        res += 'Logical monitors:\n';
-        for (const [index, logicalMonitor] of logicalMonitors.entries()) {
-            res +=
-                `${index + 1})\t(x, y) = (${logicalMonitor[0]}, ${logicalMonitor[1]})\n` +
-                `\tscale = ${logicalMonitor[2]}\n` +
-                `\ttransform = ${logicalMonitor[3]}\n` +
-                `\tprimary = ${logicalMonitor[4]}\n` +
-                `\tmonitors:\n`;
-            for (const [index, monitor] of logicalMonitor[5].entries()) {
-                res +=
-                    `\t${index + 1})\t- connector = ${monitor[0]}\n` +
-                    `\t\t- monitor mode ID = ${monitor[1]}\n`;
-                const underscanning = monitor[2]['underscanning'];
-                if (underscanning !== undefined) {
-                    res += `\t\t- underscanning = ${underscanning.get_boolean()}\n`;
-                }
-            }
-        }
-
-        res += 'Properties:\n';
-        const layoutMode = properties['layout-mode'];
-        if (layoutMode !== undefined) {
-            res += `\tlayout-mode = ${layoutMode.get_uint32()}\n`;
-        }
-
-        res += 'Physical displays:\n';
-        for (const [index, display] of physicalDisplays.entries()) {
-            // Support both old format [connector, vendor, product, serial] and new format [connector, displayName]
-            if (display.length === 2) {
-                // New format
-                res +=
-                    `${index + 1})\t- connector = ${display[0]}\n` +
-                    `\t- displayName = ${display[1]}\n`;
-            } else {
-                // Old format (legacy)
-                res +=
-                    `${index + 1})\t- connector = ${display[0]}\n` +
-                    `\t- vendor = ${display[1]}\n` +
-                    `\t- product = ${display[2]}\n` +
-                    `\t- serial = ${display[3]}\n`;
-            }
-        }
-
-        res += `Config hash: ${hash}`;
-
-        return res;
-    }
-
     #updateConfigGroup() {
         const configListBox = this.#builder.get_object('configListbox');
+        this.#profileRows.clear();
         for (let row; (row = configListBox.get_last_child()) !== null;) {
             configListBox.remove(row);
         }
@@ -246,10 +204,9 @@ export default class MyVisionPreferences extends ExtensionPreferences {
             const config = profile.config;
             const row = PrefsWidgets.createConfigRow({});
 
+            row.use_markup = false;
             row.text = config[NAME_INDEX];
-            row.title = this.#printPhysicalDisplays(config);
-            row.tooltip_text = row.title;
-            row.infoLabel.label = this.#prettyPrintConfig(config);
+            this.#profileRows.set(profile.id, row);
 
             const lid = new Gtk.DropDown({
                 model: Gtk.StringList.new([_('Any lid state'), _('Lid open'), _('Lid closed')]),
@@ -280,24 +237,74 @@ export default class MyVisionPreferences extends ExtensionPreferences {
 
             configListBox.append(row);
         }
+        this.#updateProfileDetails();
     }
 
-    #printPhysicalDisplays(config) {
-        const physicalDisplays = config[PHYSICAL_DISPLAYS_INDEX];
-        let res = [];
+    #updateProfileDetails() {
+        const displays = this.#displayConfigSwitcher?.getPhysicalDisplayInfo() ?? null;
+        const lid = this.#displayConfigSwitcher?.getLidState() ?? 'unknown';
+        for (const profile of this.#configs) {
+            const row = this.#profileRows.get(profile.id);
+            const status = profileStatus(profile, displays, lid);
+            row.title = status.available ? _('Available for the current setup') : `${_('Unavailable')}: ${status.reason}`;
+            row.tooltip_text = row.title;
+            row.infoLabel.label = formatProfileDetails(profile, displays, lid, _);
+        }
+    }
 
-        for (const display of physicalDisplays) {
-            // Support both formats: new [connector, displayName] and old [connector, vendor, product, serial]
-            if (display.length === 2) {
-                // New format
-                res.push(`${display[1] || 'Unknown'} (${display[0]})`);
+    async #transferProfiles(importing) {
+        if (this.#fileCancellable !== null)
+            return;
+        const cancellable = new Gio.Cancellable();
+        this.#fileCancellable = cancellable;
+        const buttons = ['exportProfilesButton', 'importProfilesButton'].map(id => this.#builder.get_object(id));
+        for (const button of buttons)
+            button.sensitive = false;
+        try {
+            Gio._promisify(Gtk.FileDialog.prototype, 'open');
+            Gio._promisify(Gtk.FileDialog.prototype, 'save');
+            const filter = new Gtk.FileFilter({ name: _('My Vision profile backups (*.json)') });
+            filter.add_pattern('*.json');
+            const filters = new Gio.ListStore({ item_type: Gtk.FileFilter });
+            filters.append(filter);
+            const dialog = new Gtk.FileDialog({
+                title: importing ? _('Import Profiles') : _('Export Profiles'),
+                modal: true, filters, default_filter: filter,
+            });
+            if (!importing)
+                dialog.initial_name = 'my-vision-profiles.json';
+            const file = await (importing ? dialog.open(this.#root, cancellable) : dialog.save(this.#root, cancellable));
+            cancellable.set_error_if_cancelled();
+            if (importing) {
+                const profiles = await readProfileBackup(file, cancellable);
+                cancellable.set_error_if_cancelled();
+                // Merge into the latest settings, including edits made while the chooser was open.
+                this.#store.reload();
+                const result = mergeProfiles(this.#store.profiles, profiles);
+                if (result.added > 0) {
+                    this.#store.profiles = result.profiles;
+                    this.#store.save();
+                }
+                windowToast(this.#root, _('Imported profiles: %s. Duplicates skipped: %s.')
+                    .replace('%s', result.added).replace('%s', result.skipped));
             } else {
-                // Old format - use product or vendor
-                const name = display[2] || display[1] || 'Unknown';
-                res.push(`${name} (${display[0]})`);
+                this.#store.reload();
+                const text = exportProfiles(this.#store.profiles);
+                await writeProfileBackup(file, text, cancellable);
+                cancellable.set_error_if_cancelled();
+                windowToast(this.#root, _('Profiles exported.'));
+            }
+        } catch (error) {
+            const dismissed = error instanceof GLib.Error && error.matches(Gtk.dialog_error_quark(), Gtk.DialogError.DISMISSED);
+            if (!cancellable.is_cancelled() && !isCancelled(error) && !dismissed)
+                windowToast(this.#root, `${importing ? _('Could not import profiles') : _('Could not export profiles')}: ${error.message.slice(0, 300)}`);
+        } finally {
+            if (!cancellable.is_cancelled()) {
+                this.#fileCancellable = null;
+                for (const button of buttons)
+                    button.sensitive = true;
             }
         }
-        return _('Displays: ') + res.join(', ');
     }
 
 }
