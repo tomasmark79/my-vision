@@ -112,8 +112,15 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
   toggle's `_onConfig()`. Logs use `[My Vision probe]`. It restores the original
   OSD method and proxy timeout afterward unless the owner was cancelled.
   `start(true)` is supported for a subsequent comparison with OSD enabled.
-  This helper is a disposable diagnostic, syntax-checked with Node; not yet run
-  in Shell at time of this update. Need user to execute the first LG command.
+  User executed the command; the Shell probe started at 08:50:09. The first
+  fourteen mixed steps passed with explicit `OSD suppressed` messages and no
+  new AMD errors. Await completion and physical confirmation, then compare with
+  `start(true)` before declaring OSD the cause.
+  The initial recorder expired at about 08:49; started a new 1800-second capture
+  at `/home/tomas/.local/state/my-vision/diagnostics/20261108-085034-326389/`.
+  `latest` now points there. Backfilled the initial probe journal events into
+  `shell-probe-journal.jsonl` in the original evidence directory; the first probe
+  steps lack a D-Bus trace but remain covered by Shell/kernel journal messages.
 - GNOME Shell Eval returned `(false, '')`: unsafe mode is not enabled. Do not
   enable unsafe mode or bypass Shell's sender checks. Direct remote ShowOSD is
   also sender-restricted. Looking Glass is the intended local diagnostic path.
