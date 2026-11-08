@@ -14,7 +14,7 @@ monitor identities and laptop lid conditions.
 ## Features
 
 - Save and restore display configurations with a single click
-- Native GNOME OSD with the profile name on the displays enabled by a confirmed switch
+- Active profile name and checkmark in Quick Settings
 - Keyboard shortcuts support for fast profile switching
 - Profiles are bound to physical monitor identities (not port order)
 - Drag & drop reordering of saved configurations
@@ -184,6 +184,13 @@ Also test rapid lid changes and disabling the extension during a switch.
 
 Use the development environment above if Blueprint or GLib build tools are missing.
 After installing changed JavaScript, start a fresh GNOME session.
+
+Profile switches do not display a native GNOME OSD. Controlled live testing on
+GNOME 50 with AMD graphics reproduced a gray display and kernel display timeouts
+when the profile OSD was enabled; the same 20 mixed profile switches completed
+with OSD suppressed. The active profile is shown in Quick Settings instead.
+Disabling VRR alone did not prevent the reproduced failure. This workaround
+removes the confirmed trigger; it does not claim to fix the underlying driver.
 
 If a profile is unavailable, check that the connected monitor set and lid state
 match its saved context. Ambiguous monitor identities are deliberately refused.

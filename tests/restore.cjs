@@ -37,7 +37,7 @@ function menuFixture(version = '50.0') {
     const open = {id: 'open', config: ['Open']};
     Object.assign(menu, {
         _cancellable: cancellable, _context: null, _handledContext: false, _retryCount: 0,
-        _isApplyingConfig: false, _pendingProfile: null, _pendingOsd: null,
+        _isApplyingConfig: false, _pendingProfile: null,
         _store: {profiles: [closed, open], last: {}, enrich() {}, remember(key, id) {this.last[key] = id;}},
         _displayConfigSwitcher: {getPhysicalDisplayInfo: () => [], getLidState: () => key, applyProfile: async () => {}},
         _getContext: () => key,
@@ -113,52 +113,44 @@ test('cancellation while saving cannot access released settings or UI', async ()
     assert.equal(notices.length, 0);
 });
 
+// Live A/B testing isolated the native OSD as the display-hang trigger. These
+// checks prevent reintroducing that side effect; hardware verification is separate.
 for (const version of ['46.0', '47.0', '48.0', '49.0', '50.0']) {
-    test(`GNOME ${version}: OSD follows confirmed state and uses the matching native API`, async () => {
-        const {menu, closed, osds} = menuFixture(version);
+    test(`GNOME ${version}: mixed profile switches never display an OSD`, async () => {
+        const {menu, closed, open, osds} = menuFixture(version);
+        const both = {id: 'both', config: ['Both']};
+        menu._store.profiles.push(both);
         menu._context = 'closed';
-        menu._isActive = () => true;
-        await menu._onConfig(closed);
-        assert.equal(osds.length, 0, 'Wait for the refreshed monitor state');
-        menu._onStateChanged();
-        assert.equal(osds.length, 1);
-        const modern = Number.parseInt(version, 10) >= 49;
-        assert.equal(osds[0][0], modern ? 'showAll' : 'show');
-        if (!modern) assert.equal(osds[0][1], -1);
-        assert.equal(osds[0][modern ? 1 : 2].name, 'video-display-symbolic');
-        assert.equal(osds[0][modern ? 2 : 3], 'Closed');
-        assert.equal(osds[0].at(-1), null, 'Profile OSD has no volume/brightness bar');
-        menu._onStateChanged();
-        assert.equal(osds.length, 1, 'Own state events must not repeat OSD');
+        menu._handledContext = true;
+        menu._updateMenu = () => {menu._currentConfigs = [closed, open, both];};
+        let active = null;
+        menu._displayConfigSwitcher.applyProfile = async profile => {active = profile.id;};
+        menu._isActive = profile => profile.id === active;
+        const profiles = [closed, open, both];
+        const order = [0, 1, 0, 1, 2, 1, 0, 1, 2, 0, 1, 0, 2, 1, 2, 1, 2, 0, 2, 0];
+        for (const index of order) {
+            const profile = profiles[index];
+            await menu._onConfig(profile);
+            menu._onStateChanged();
+            assert.equal(menu._store.last.closed, profile.id, 'The selection must still be remembered');
+            assert.equal(osds.length, 0, 'A confirmed switch must not trigger native OSD composition');
+        }
     });
 }
 
-test('failed or unconfirmed switches do not announce success', async () => {
-    const {menu, closed, osds} = menuFixture();
+test('failed switches keep the remembered selection and report the failure', async () => {
+    const {menu, closed, osds, notices} = menuFixture();
     menu._context = 'closed';
+    menu._store.last.closed = 'previous';
     menu._displayConfigSwitcher.applyProfile = async () => {throw new Error('Unavailable mode');};
     await menu._onConfig(closed);
     menu._onStateChanged();
+    assert.equal(menu._store.last.closed, 'previous');
+    assert.equal(notices.length, 1);
     assert.equal(osds.length, 0);
-    menu._displayConfigSwitcher.applyProfile = async () => {};
-    await menu._onConfig(closed);
-    menu._onStateChanged(); // _isActive returns false: fresh layout does not match.
-    assert.equal(osds.length, 0);
-    assert.equal(menu._pendingOsd, null);
 });
 
-test('changed monitor context discards pending OSD', async () => {
-    const {menu, closed, setContext, osds} = menuFixture();
-    menu._context = 'closed';
-    menu._isActive = () => true;
-    await menu._onConfig(closed);
-    setContext('open');
-    menu._showPendingOsd();
-    assert.equal(osds.length, 0);
-    assert.equal(menu._pendingOsd, null);
-});
-
-test('cancellation during switch cannot queue an OSD', async () => {
+test('cancellation during switch does not display an OSD or access released settings', async () => {
     const {menu, closed, osds} = menuFixture();
     const pending = deferred();
     menu._displayConfigSwitcher.applyProfile = () => pending.promise;
@@ -169,5 +161,4 @@ test('cancellation during switch cannot queue an OSD', async () => {
     pending.resolve();
     await apply;
     assert.equal(osds.length, 0);
-    assert.equal(menu._pendingOsd, null);
 });

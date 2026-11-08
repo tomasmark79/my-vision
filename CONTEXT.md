@@ -1,8 +1,9 @@
 # Intermittent gray display investigation
 
 Goal: identify and fix the intermittent gray external display when switching
-My Vision profiles or reconnecting USB-C. Investigation is ongoing; no runtime
-extension code has been changed and no fix is yet verified.
+My Vision profiles or reconnecting USB-C. A/B testing isolated profile OSD as the
+trigger. Sources now remove it, all regression checks and packaging passed.
+Installation and final verification with original settings are still pending.
 
 ## Confirmed reproduction (2026-11-08, Europe/Prague)
 
@@ -122,6 +123,37 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
   `latest` now points there. Backfilled the initial probe journal events into
   `shell-probe-journal.jsonl` in the original evidence directory; the first probe
   steps lack a D-Bus trace but remain covered by Shell/kernel journal messages.
+- OSD-enabled comparison started at 08:52:04. The same sequence began showing
+  blank-CRTC errors around the `Both` → built-in transition at 08:52:25, followed
+  by flip/commit timeouts. The user confirmed immediate visible collapse within
+  a few switches. Disabled My Vision to cancel the probe; `INACTIVE` verified.
+  This isolates native profile OSD as the trigger in the extension path. It does
+  not establish the precise defect inside Shell/compositor/driver implementation.
+- Implemented minimal fix: remove profile OSD and its pending-state bookkeeping
+  from `extension.js`; retain active profile name/checkmark in Quick Settings.
+  Replaced OSD-success tests with 20 mixed-switch checks for GNOME 46–50 that
+  prohibit native OSD calls while preserving remembered selections. They failed
+  against original sources (5 expected assertion failures), then passed after fix.
+- Built via `nix-shell shell.nix --run 'bash build.sh -b'`.
+  ZIP: `dist/my-vision@digitalspace.name.zip`, seven JavaScript modules verified
+  byte-for-byte against source; diagnostics excluded.
+  SHA-256: `29c69a6c8b35521eeb5a31380ee57b452d0cb59ab1c799ed73afef7dbcaf760c`.
+  Nothing installed or published yet. Seek the user's instruction for installation
+  once this concrete artifact is ready; never log the user out automatically.
+- Restored temporary test changes: PSR exclusion flag back to original `0`;
+  the two test profile configurations restored exactly from backup, preserving
+  remembered selections made during the investigation. Their original VRR modes
+  are therefore restored. No persistent host configuration was changed.
+- Prepared current-session fix helper `apply-osd-fix.mjs` in original evidence
+  directory, symlink `/tmp/my-vision-osd-fix-20261108.js` (syntax checked only).
+  Looking Glass command:
+  `(await import('file:///tmp/my-vision-osd-fix-20261108.js')).apply()`
+  It enables My Vision and suppresses profile OSD on the cached toggle prototype,
+  surviving disable/enable in this Shell. New installed code takes over next login.
+  This avoids unsafe mode and restarting the session. User must execute locally.
+  Afterward run the 20 mixed `start(false)` probe with restored original VRR/PSR
+  settings and confirm physical output plus journal health. Do not use `start(true)`
+  as an OSD-positive control after patching the prototype: original OSD is then gone.
 - GNOME Shell Eval returned `(false, '')`: unsafe mode is not enabled. Do not
   enable unsafe mode or bypass Shell's sender checks. Direct remote ShowOSD is
   also sender-restricted. Looking Glass is the intended local diagnostic path.
@@ -143,5 +175,10 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
   filtering improvements retain USB disconnections and exclude unrelated services.
   The current recording still uses the initial filter; leave it running to avoid
   losing events during the physical test.
-- Pending: controlled OSD-enabled comparison and any resulting fix. No build,
-  installation, session reload or publication.
+- Full regression checks passed after the fix: profile 55, display/lid/cancellation,
+  initialization 4, startup/restore 18, diagnostic tool 3. A live read-only check
+  initially failed inside Context Mode because its subprocess lacks session D-Bus
+  environment; reran with normal exec in the desktop environment and it passed.
+- Pending: installation authorization, optional live helper activation and final
+  20-step verification after restoring original VRR/PSR settings. Build complete;
+  no installation, session reload or publication yet.
