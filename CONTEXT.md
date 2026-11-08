@@ -6,7 +6,60 @@ The current source patch fixes verified shortcut autorepeat/queue defects. Physi
 verification through the actual shortcut is still required; do not claim the gray
 screen is fixed solely because direct profile-application probes passed.
 
-## Standalone comparison and next isolation (11:39)
+## Latest decisive result and model handoff (11:46)
+
+- USER IS SWITCHING TO ASTRA. Stop issuing display writes during handoff. No
+  production extension fix has been applied in this turn; only standalone tool,
+  documentation, evidence and temporary session instrumentation were added.
+- Critical correction to earlier interpretation: with My Vision DISABLED, rapid
+  independent Gio/D-Bus sequence both -> builtin -> external reproduced the SAME
+  AMD blank errors AND user-confirmed physical gray screen. Thus active My Vision
+  is NOT necessary to reproduce. Do not conclude extension code alone is proven
+  root cause from earlier slower A/B results.
+- Exact temporary applies on Linux 7.4.0-rc1, all independent sender processes:
+  11:44:59.902 both, 11:45:00.606 builtin, 11:45:01.302 external.
+  First kernel blank error actual journal timestamp 11:45:01.605, then .730/.853.
+  The script detected errors at 11:45:01.928. Extension was restored only AFTER
+  that, marker 11:45:03.870. Recorder ingestion was delayed until 11:45:05;
+  use journal __REALTIME_TIMESTAMP, not ingestion time, for this ordering.
+- Extension disabled state was checked by each standalone invocation; state 2
+  accepted before Apply, state 1 refused unless explicit comparison flag.
+  User confirmed the gray result after physical recovery. Do not expect them to
+  type while gray: image/keyboard access is unavailable until USB-C recovery.
+- Menu actor suppression also did NOT fully fix the bug. Ten slow standalone
+  requests with active extension + suppressed menu changes passed visually, but
+  user manual shortcut test failed at 11:42:41 DURING suppression (not expiry).
+  Actual Shell-originated requests: Both 11:42:39.649, builtin 11:42:40.200,
+  external 11:42:40.762. User described this as the first keyboard switch attempt.
+  Do not assume three physical keystrokes; raw input was not captured. Do not
+  silently treat successful slow probes as a complete physical fix.
+- Menu helper automatically restored the original method around 11:43:38;
+  journal explicitly confirms restoration. No ongoing patch or new timers.
+  No production lazy-menu refactor was made because manual result falsified a
+  menu-only fix. Source installed extension remains unchanged from 1616cb4.
+- Rapid reproducer command (ONLY when user ready for physical recovery):
+  `python3 /tmp/my-vision-direct-trial.py --gap=0.55 both builtin external`.
+  It disables My Vision, validates frozen requests, applies one at a time with
+  actual ~0.7-second spacing including process overhead, checks fresh AMD errors,
+  stops on first error, then re-enables extension in finally. No USB-C recovery.
+  Temporary orchestrator and every request log are outside repo; repo client
+  tools/direct-display.mjs imports no extension code.
+- Evidence directory remains 20261108-112603-754397. independent-trial.log,
+  trace.jsonl, direct-display-profiles.json, connector-audit.mjs, and
+  independent-request-hashes.json. External payload hash excluding serial
+  `16e72b6b907efe3519ffee62496031a5315a3a6d291e5c15f151437df376b087` was identical
+  for six external requests across earlier pass/fail A/B tests.
+- Next useful comparison: SAME rapid sequence with extension off and external
+  exact fixed 4K/60 Hz or 120 Hz, changing only refresh in a SEPARATE frozen test
+  fixture (not saved user profiles), after confirming physical recovery. This
+  comparison is NOT prepared or run yet. Another option is bracket timing with
+  controlled single transitions. Earlier active-extension 5-second failure means
+  timing alone is not yet proven sole cause. No driver/DSC/PSR theory verified.
+- Physical recovery remains manual and unreliable in software. Keep My Vision
+  enabled outside explicitly authorized temporary isolated tests. Kernel and
+  profiles stay as configured; do not reboot/logout or restore VRR unasked.
+
+## Earlier standalone comparison and menu isolation (11:39)
 
 - User clarified that the initial post-7.4 failures around 11:26 were Win+P,
   with My Vision active. Do NOT attribute those to Ctrl+Alt+period.
