@@ -2,8 +2,10 @@
 
 Updated 2026-11-08. This records one hardware-specific investigation, not a
 general assertion about all AMD or GNOME systems. After the source review, the
-user chose to close this investigation with the working 120 Hz profiles and
-restore native profile OSD feedback. No further crash tests are planned.
+user restored native profile OSD feedback, then authorized a manual comparison
+with the original extension. That comparison reproduced the fault and was stopped
+at the user's request. My Vision is enabled again with the working 120 Hz profiles;
+no further crash tests are planned.
 
 ## Established result
 
@@ -59,6 +61,76 @@ followed by flip/commit timeouts. The errors locate the observed stall in the
 display pipeline, but do not identify who first caused invalid state. A successful
 D-Bus reply or correct reported logical layout does not prove a working image.
 Physical USB-C reconnection was needed; software recovery was unreliable.
+
+## Original extension: forward cycling passed, reverse cycling failed
+
+After a fresh login, the user verified My Vision switching at 120 Hz, then tested
+unmodified Display Configuration Switcher v13 with My Vision disabled. Its three
+profiles were saved manually using GNOME Settings and the original extension;
+the earlier generated comparison profiles were removed first. Their stored order
+was **Both, External, BuiltIn**, and external refresh was fixed
+`3840x2160@143.999`, not 60 Hz or VRR.
+
+The user reported successful forward cycling with **Ctrl+Alt+period**, followed
+by the same gray screen after reversing with **Ctrl+Alt+comma**. The relevant
+difference is the order of display transitions, not evidence that a particular
+key causes a driver fault:
+
+| Direction | Repeating order | How external 144 Hz is activated |
+| --- | --- | --- |
+| Forward / period | Both → External → BuiltIn → Both | BuiltIn → Both keeps the internal panel active; Both → External then removes it while external is already running. |
+| Reverse / comma | Both → BuiltIn → External → Both | BuiltIn → External enables external 144 Hz and disables the internal panel in the same requested configuration. |
+
+In the initially confirmed successful interval (12:27:01–12:27:26 CET), the
+trace contains 26 distinct Shell-originated Apply requests: 10 Both, 8 External,
+8 BuiltIn, including two adjacent Both requests. There were no AMD blank/flip
+errors in that interval. These are request counts, not counts of physical keys
+or necessarily distinct hardware modesets. Raw keyboard events were not recorded;
+the direction attribution comes from the user's report and saved profile order.
+
+Immediately before the later failure, the recorded requests were:
+
+| CET | Target |
+| --- | --- |
+| 12:31:52.234 | External 144 Hz |
+| 12:31:53.002 | Both, external 144 Hz |
+| 12:31:54.698 | BuiltIn only |
+| 12:31:56.011 | External 144 Hz only |
+| 12:31:56.360 | First kernel `failed to blank crtc!` |
+| 12:32:07.461 | Kernel `flip_done timed out` |
+
+This supplies a concrete reason to investigate **activating external 144 Hz while
+removing the internal panel** and the preceding display state. It does not prove
+a safe universal workaround: the same direct BuiltIn → External target transition
+also appeared at 12:28:30.811 without a recorded blank error. Earlier independent
+tests sometimes passed too. The successful forward order must be preserved as
+evidence, not promoted to a guaranteed fix or a reason to start more testing.
+
+Read-only comparison with the earlier failing fixtures found identical semantic
+requests for External and BuiltIn. Refresh rates, VRR selection, scales, rotation,
+primary assignments and stored properties matched. The Both profile differed only
+in the built-in panel's Y position: **214 instead of 238**. This newer layout also
+failed in the original extension, so the old coordinate is not necessary for the
+fault. Dictionary entry order differed, without changing property values/types.
+The built-in scale remains 1.6666666269302368 and external scale 1.5; this is not
+a controlled test of fractional versus integer scaling.
+
+The user also perceived faster switching in the original extension. Source review
+shows that My Vision debounces state updates by 500 ms and holds subsequent
+requests until publication, whereas upstream reads state directly on the monitor
+signal. My Vision additionally refreshes state before Apply. These differences
+can affect interaction latency; no key-to-visible-image latency was measured,
+and none is established as the cause of the gray display.
+
+Private evidence: `~/.local/state/my-vision/diagnostics/20261108-122229-424962/`:
+`trace.jsonl`, `upstream-native-profiles.json`, `upstream-native-profiles.variant`,
+`native-vs-original-request-differences.json`, and `upstream-switch-order.json`.
+GNOME Settings returned one `Monitors config incomplete` validation error during
+profile creation, separately from the later upstream/AMD failure; do not report
+the entire capture as free of all errors. The passive recorder was stopped,
+upstream disabled, and My Vision re-enabled after verifying its available
+open-lid profiles still request fixed 120 Hz. The read-only proposal for copying
+native profiles into My Vision was never applied.
 
 ## Findings that constrain the diagnosis
 
