@@ -109,3 +109,15 @@ These differences justify a controlled comparison, not a predicted result.
 User should be ready for physical USB-C recovery before any 144 Hz transition;
 there is no authorized automatic crash loop. All tests must distinguish method
 acceptance from a visible image. Restore My Vision after the comparison.
+
+## User now creates upstream profiles manually
+
+The user requested native profile creation instead of converted fixtures. Only
+our three prepared profiles were removed from upstream settings after exact
+name/logical configuration/property matching; zero other profiles existed at
+that moment. A complete backup is in the current capture directory as
+upstream-before-manual-profiles-*.json. Upstream remains active, My Vision off.
+The user is now saving new native profiles through GNOME Settings and the
+original extension. Do not overwrite, regenerate or delete their profiles.
+Wait for completion, then read-only check actual modes/properties before drawing
+conclusions. Recorder remains active; marker upstream-generated-profiles-removed.
