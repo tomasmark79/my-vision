@@ -18,6 +18,17 @@ import uuid
 INTERFACE = "org.gnome.Mutter.DisplayConfig"
 OBJECT = "/org/gnome/Mutter/DisplayConfig"
 RELEVANT = re.compile(r"my.?vision|display|monitor|mutter|amdgpu|drm|kms|gpu|page.?flip|atomic|link.?train|JS ERROR|JS WARNING", re.I)
+USB_EVENT = re.compile(r"typec|thunderbolt|usb.*(?:disconnect|new .*device)", re.I)
+
+
+def relevant_journal(entry):
+    message = entry.get("MESSAGE", "")
+    if not isinstance(message, str):
+        return False
+    if entry.get("_TRANSPORT") == "kernel":
+        return bool(RELEVANT.search(message) or USB_EVENT.search(message))
+    component = entry.get("_COMM", "").lstrip(".")
+    return component.startswith(("gnome-shell", "xdg-desktop-po", "gnome-control-c", "gsd-power", "gsd-xrandr", "upowerd")) and bool(RELEVANT.search(message))
 
 
 class DisplayMessages:
@@ -180,10 +191,9 @@ def record(args, output, root):
                             except ValueError:
                                 emit("journal-access", line)
                                 continue
-                            message = entry.get("MESSAGE", "")
-                            if isinstance(message, str) and RELEVANT.search(message):
+                            if relevant_journal(entry):
                                 emit("journal", {k: entry.get(k) for k in
-                                                 ("__REALTIME_TIMESTAMP", "__MONOTONIC_TIMESTAMP", "_BOOT_ID", "_COMM", "_PID", "MESSAGE")})
+                                                 ("__REALTIME_TIMESTAMP", "__MONOTONIC_TIMESTAMP", "_BOOT_ID", "_TRANSPORT", "_COMM", "_PID", "MESSAGE")})
                 if time.monotonic() >= next_snapshot:
                     snapshot = state()
                     if snapshot != previous or markers:

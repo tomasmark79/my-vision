@@ -34,16 +34,23 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
 
 ## Next steps
 
-1. Isolate VRR at unchanged frequencies, then simultaneous display disable/enable,
-   then USB-C/driver behavior independent of My Vision. Do not treat a hypothesis
-   as a confirmed root cause or silently remove VRR from users' profiles.
+1. VRR-only hypothesis failed: the user confirmed a second gray-screen incident
+   with fixed-refresh profiles at about 08:23. The requests contained no `+vrr`.
+   The failing switch was built-in-only to external-only at 08:23:16.701; kernel
+   logged `dcn20_wait_for_blank_complete: failed to blank crtc!` at 08:23:17,
+   followed by flip/commit timeouts. This is an AMD display power/modeset failure;
+   the exact trigger remains unconfirmed.
+   The user also reported 3-second pauses did not help (third failure around
+   08:25); the trace does not establish that the requested intermediate `Both`
+   layout reached the bus before the timeout, so do not claim that the two-step
+   strategy was conclusively tested.
 2. User authorized temporarily disabling VRR in the two open-lid,
    external-connected profiles. Applied and verified: external-only 144 Hz and
    built-in-only 120 Hz use their exact fixed-refresh counterparts. IDs, order,
    topology, lid conditions, geometry, frequency and selections were preserved.
    Legacy settings and all other profiles were untouched. The user noted having
    previously disabled VRR in GNOME settings; saved profiles were re-enabling it.
-   Awaiting repeated physical switches with the fixed-refresh profiles.
+   Fixed-refresh switches reproduced the failure; see above.
    Exact backups and the test plan are in the evidence directory above:
    `profiles-v2-before-vrr-test.json`, `profiles-v2-without-vrr-test.json`,
    `vrr-test-plan.json`. `test-fixed-refresh.mjs` supports `restore`, restoring
@@ -53,20 +60,36 @@ or stopped with `python3 tools/capture-display.py mark LABEL` / `stop`.
    the extension reloads the changed profiles through its existing settings signal.
    Closed-lid and built-in-without-external profiles still contain their original
    VRR settings; test with the lid open and USB-C connected.
-3. Compare repeated physical switches with the known failing transition and
-   inspect kernel errors as well as visible output. No unattended command can
-   currently assert the exact physical gray-screen symptom.
+3. User authorized a temporary live PSR test. At 08:27:12 wrote `1` to
+   `/sys/kernel/debug/dri/1/eDP-1/disallow_edp_enter_psr` and verified readback.
+   Original value `0` is saved in `psr-test-before.json`; applied value in
+   `psr-test-applied.json` in the evidence directory. This changes the PSR
+   eligibility for subsequent panel mode/power transitions, not instant PSR state.
+   The user is now repeating physical switches. No boot parameters or persistent
+   host configuration have been changed. Restore by writing `0` to that exact
+   node when appropriate; keep a trace marker for comparisons.
+   Read-only debugfs showed panel PSR support yes, panel replay support no,
+   DMCUB firmware 0x08006500. Kernel implementation was checked at
+   https://raw.githubusercontent.com/torvalds/linux/v7.3/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_debugfs.c
+   (`disallow_edp_enter_psr_set`).
+   Compare kernel errors and visible output. No unattended command can currently
+   assert the exact physical gray-screen symptom.
 4. If a kernel/system fix is needed, consult `~/.codex/PROJECTS.md` to identify
    its owning project; do not change host configuration speculatively.
 
 ## Verification so far
 
-- Recorder correlation tests: 2 passed; real live trace includes the matching
+- Recorder tests: 3 passed (reply correlation and journal component filtering);
+  real live trace includes the matching
   Apply reply and monitor signals, successful state reads and kernel failures.
 - Schema compilation, profile checks (55), display configuration/lid/cancellation
   checks, asynchronous initialization (4), startup/restore checks (19) all passed.
 - `gjs -m tests/live-read-only.js` passed. This reads live state only; the physical
   failure was reproduced separately by the user.
 - `git diff --check` passed after adding the recorder documentation.
-- Pending: local commit of verified diagnostic tooling and
-  controlled comparison. No build, installation, session reload or publication.
+- Initial diagnostic tooling committed locally as `1ffc804`; subsequent journal
+  filtering improvements retain USB disconnections and exclude unrelated services.
+  The current recording still uses the initial filter; leave it running to avoid
+  losing events during the physical test.
+- Pending: controlled PSR comparison and any resulting fix. No build,
+  installation, session reload or publication.

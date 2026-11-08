@@ -39,5 +39,15 @@ class DisplayMessagesTest(unittest.TestCase):
             "signal time=4 sender=org.freedesktop.DBus -> destination=:1.9 serial=1 interface=org.freedesktop.DBus; member=NameLost"))
 
 
+class JournalMessagesTest(unittest.TestCase):
+    def test_limits_messages_to_display_components(self):
+        self.assertTrue(capture.relevant_journal({"_TRANSPORT": "kernel", "MESSAGE": "amdgpu flip_done timed out"}))
+        self.assertTrue(capture.relevant_journal({"_TRANSPORT": "kernel", "MESSAGE": "usb 7-1: USB disconnect, device number 77"}))
+        self.assertTrue(capture.relevant_journal({"_COMM": ".gnome-shell-wr", "MESSAGE": "Failed to apply display profile"}))
+        self.assertTrue(capture.relevant_journal({"_COMM": ".xdg-desktop-po", "MESSAGE": "Monitor has no configuration which is-current!"}))
+        self.assertFalse(capture.relevant_journal({"_COMM": "systemd", "MESSAGE": "backup-monitor.service: Failed"}))
+        self.assertFalse(capture.relevant_journal({"_TRANSPORT": "kernel", "MESSAGE": "Unrelated kernel event"}))
+
+
 if __name__ == "__main__":
     unittest.main()
