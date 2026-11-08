@@ -190,6 +190,45 @@ match its saved context. Ambiguous monitor identities are deliberately refused.
 Report problems in the [issue tracker](https://github.com/tomasmark79/my-vision/issues)
 with reproduction steps and the GNOME Shell version.
 
+### Capture an intermittent blank or gray display
+
+Start this read-only recorder from the repository in the affected GNOME session:
+
+```bash
+python3 tools/capture-display.py record
+```
+
+It runs outside Shell for up to 30 minutes without reloading the extension,
+applying display configurations or changing settings. It requires Python 3,
+`dbus-monitor`, `gdbus`, `journalctl` and `gnome-extensions`. Reproduce the issue
+using your normal profile switches or cable reconnection. In another terminal,
+mark the visible symptom, preferably before recovering the display:
+
+```bash
+python3 tools/capture-display.py mark gray-screen
+python3 tools/capture-display.py mark recovered
+python3 tools/capture-display.py stop
+```
+
+Ctrl+C also stops the foreground recorder. The output path is printed at startup;
+the default is `$XDG_STATE_HOME/my-vision/diagnostics/` (normally
+`~/.local/state/my-vision/diagnostics/`), with `latest` pointing to the latest run.
+Use `--duration SECONDS` to change the time limit or `--output DIRECTORY` to choose
+a new capture directory. Pass that same output directory to `mark` and `stop`
+when recording more than one session.
+
+`trace.jsonl` contains UTC and monotonic timestamps, saved profiles, the Shell
+D-Bus owner, display configuration requests and their correlated replies, monitor
+change signals, lid state, read-only connector status and relevant journal messages.
+Unrelated Shell replies are filtered out. State is sampled every two seconds and
+after display events; unchanged snapshots are omitted. Read timeouts and collector
+failures are recorded. Journal coverage depends on the current user's permissions.
+The trace contains monitor identities and profile names; inspect it before sharing.
+A successful D-Bus reply or reported active mode does not prove the physical screen
+is displaying correctly; the symptom marker is needed to correlate the failure.
+
+Check the recorder's reply correlation with `python3 tests/capture-display.py`.
+
 ## License
 
 [GPL-3.0-or-later](LICENSE). Copyright © 2024 Tomáš Mark.
