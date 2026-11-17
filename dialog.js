@@ -19,6 +19,7 @@ import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
+import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 
 export const NameDialog = GObject.registerClass(
@@ -39,8 +40,11 @@ export const NameDialog = GObject.registerClass(
         }
 
         _initContent() {
-            const boxLayout = new St.BoxLayout();
-            boxLayout.set_vertical(true);
+            // GNOME 48 deprecated St.BoxLayout.vertical in favor of orientation; 51 removed it.
+            const boxLayout = new St.BoxLayout(
+                Number.parseInt(Config.PACKAGE_VERSION, 10) >= 48
+                    ? { orientation: Clutter.Orientation.VERTICAL }
+                    : { vertical: true });
 
             this._message = new St.Label();
             this._entry = new St.Entry();
