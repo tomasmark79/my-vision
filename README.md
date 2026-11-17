@@ -24,7 +24,7 @@ monitor identities and laptop lid conditions.
 
 ## Requirements
 
-Declared GNOME Shell versions: **46–50**, as listed in `metadata.json`.
+Declared GNOME Shell versions: **46–51**, as listed in `metadata.json`.
 
 Build tools: Bash, Python 3, Node.js (syntax checks), zip, `blueprint-compiler`,
 `glib-compile-schemas`, `glib-compile-resources` and `xmllint`.

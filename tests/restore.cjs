@@ -124,7 +124,7 @@ test('cancellation while saving cannot access released settings or UI', async ()
 });
 
 // Exercise the real switch/state-publication path without changing live displays.
-for (const version of ['46.0', '47.0', '48.0', '49.0', '50.0']) {
+for (const version of ['46.0', '47.0', '48.0', '49.0', '50.0', '51.0']) {
     test(`GNOME ${version}: show each confirmed profile once on all active monitors`, async () => {
         const { menu, closed, open, osds } = menuFixture(version);
         const both = { id: 'both', config: ['Both'] };
