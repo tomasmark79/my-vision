@@ -3,19 +3,6 @@
 These instructions apply to this repository and all its subdirectories. Read
 them before changing the extension. Preserve existing user changes.
 
-## Shared GNOME extension conventions
-
-Before changing or reviewing this extension, read and follow
-`../_gnome_ext_orchestrator/CONVENTIONS.md`. Resolve these paths from the root
-of this repository.
-
-- When changing `build.sh`, use `../_gnome_ext_orchestrator/build.sh` as the
-  template and preserve the project's build steps.
-- When changing the public README, use
-  `../_gnome_ext_orchestrator/PROJECT_README.md` as the template.
-- If the orchestrator checkout is unavailable, report that before assessing
-  compliance with the shared conventions.
-
 ## GNOME review requirements
 
 Use these primary references when implementing or reviewing changes:
